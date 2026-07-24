@@ -28,7 +28,8 @@ while (true)
     Console.WriteLine("5. Change difficulty --");
     Console.WriteLine("6. Add a new transaction");
     Console.WriteLine("7. Display pending transactions");
-    Console.WriteLine("8. Exit");
+    Console.WriteLine("8. Test mining efficiency");
+    Console.WriteLine("9. Exit");
     Console.Write("Enter your choice: ");
     var selectedOption = Console.ReadLine();
 
@@ -79,6 +80,23 @@ while (true)
             else BlockChainDisplayService.DisplayTransactions(pendingTransactions);
             break;
         case "8":
+            Console.Write("Enter the max difficulty: ");
+            if (short.TryParse(Console.ReadLine(), out short maxDifficulty))
+            {
+                if (maxDifficulty <= 0)
+                {
+                    Console.WriteLine("Max difficulty must be greater than zero.");
+                    break;
+                }
+
+                miningService.TestMiningEffieciency(maxDifficulty);
+            }
+            else
+            {
+                Console.WriteLine("Invalid number. Please enter a valid integer.");
+            }
+            break;
+        case "9":
             return;
         default:
             Console.WriteLine("Invalid option. Please try again.");

@@ -18,7 +18,7 @@ public class MiningService
         _hashingService = hashingService;
     }
 
-    public long MineBlock(Block block, int difficulty, bool showProgress = true)
+    public (double hashRate, char measureUnit, string timeTaken, long nonce) MineBlock(Block block, int difficulty, bool showProgress = true)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(difficulty);
         ArgumentNullException.ThrowIfNull(block);
@@ -100,12 +100,13 @@ public class MiningService
         block.Nonce = winningNonce;
         block.Hash = winningHash;
 
+        var (hashRate, measureUnitIndex, timeTaken) = CalculateStatistics(attempts, stopwatch.Elapsed);
         if (showProgress)
         {
-            WriteMiningResult(winningNonce, attempts, stopwatch.Elapsed);
+            WriteMiningResult(hashRate, measureUnitIndex, timeTaken, winningNonce, attempts);
         }
 
-        return winningNonce;
+        return (hashRate, MeasureUnits[measureUnitIndex], timeTaken, winningNonce);
     }
 
     private static (double hashRate, short measureUnitIndex, string timeTaken) CalculateStatistics(long attempts, TimeSpan elapsed)
@@ -125,10 +126,9 @@ public class MiningService
         return (hashRate, measureUnitIndex, timeTaken);
     }
 
-    private static void WriteMiningResult(long nonce, long attempts, TimeSpan elapsed)
+    private static void WriteMiningResult(double hashRate, short measureUnitIndex, string timeTaken, long nonce, long attempts)
     {
-        var (hashRate, measureUnitIndex, timeTaken) = CalculateStatistics(attempts, elapsed);
-        Console.WriteLine($"Nonce: {nonce}, Time taken: {timeTaken}, Hashrate: {hashRate:F2} {MeasureUnits[measureUnitIndex]}H/s");
+        Console.WriteLine($"Average hashrate: {hashRate:F2} {MeasureUnits[measureUnitIndex]}H/s, Nonce: {nonce}, Attempts: {attempts:N0}, Time taken: {timeTaken}");
     }
 
     private static async Task ShowStatisticsAsync(
@@ -149,6 +149,7 @@ public class MiningService
                     Wrap = true,
                     Alignment = Justify.Left
                 });
+            progress.AutoRefresh = false;
             progress.AutoClear = true;
 
             await progress.StartAsync(async ctx =>
@@ -165,6 +166,7 @@ public class MiningService
                     task2.Description =
                         $"[gray][bold green]{hashRate:F2} {MeasureUnits[measureUnitIndex]}H/s[/] | [bold white]{attempts:N0} attempts[/] | [bold cyan]{timeTaken}[/][/]";
 
+                    ctx.Refresh();
                     await Task.Delay(100, cancellationToken);
                 }
             });
@@ -174,7 +176,44 @@ public class MiningService
             Console.Clear();
             Console.WriteLine("Mining completed.");
         }
+    }
 
-        
+    public void TestMiningEffieciency(short maxDifficulty)
+    {
+        Table efficiencyTable = new Table()
+                    .Title("Mining Efficiency Test", new Style(foreground: Color.DeepSkyBlue1))
+                    .Caption("Waiting for mining to complete...", new Style(foreground: Color.Gray, decoration: Decoration.Dim))
+                    .Border(TableBorder.Rounded)
+                    .BorderColor(Color.DeepSkyBlue1)
+                    .AddColumn(new TableColumn("[b]Status[/]").Centered())
+                    .AddColumn(new TableColumn("[b]Difficulty[/]").Centered())
+                    .AddColumn(new TableColumn("[b]Nonce[/]").Centered())
+                    .AddColumn(new TableColumn("[b]Avg Hash Rate[/]").Centered())
+                    .AddColumn(new TableColumn("[b]Time Taken[/]").Centered());
+
+        for (short i = 1; i <= maxDifficulty; i++)
+        {
+            efficiencyTable.AddRow("[red]Waiting...[/]", i.ToString(), "[dim]-[/]", "[dim]-[/]", "[dim]-[/]");
+        }
+
+        AnsiConsole.Live(efficiencyTable)
+            .Start(ctx =>
+            {
+                for (short i = 1; i <= maxDifficulty; i++)
+                {
+                    efficiencyTable.UpdateCell(i - 1, 0, "[yellow]Mining...[/]");
+                    ctx.Refresh();
+
+                    var (hashRate, measureUnit, timeTaken, winningNonce) = MineBlock(new Block(-1, [], "Test Block", i), i, false);
+
+                    efficiencyTable.UpdateCell(i - 1, 0, "[green]Completed![/]");
+                    efficiencyTable.UpdateCell(i - 1, 2, $"{winningNonce:N0}");
+                    efficiencyTable.UpdateCell(i - 1, 3, $"{hashRate:F2} {measureUnit}H/s");
+                    efficiencyTable.UpdateCell(i - 1, 4, timeTaken);
+                    ctx.Refresh();
+                }
+                efficiencyTable.Caption("Finished!", new Style(foreground: Color.Gray, decoration: Decoration.Dim));
+                ctx.Refresh();
+            });
     }
 }

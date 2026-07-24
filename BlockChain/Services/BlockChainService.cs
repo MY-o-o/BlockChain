@@ -8,7 +8,7 @@ namespace BlockChain.Services
         private readonly MiningService _miningService;
         private readonly TransactionService _transactionService;
         public List<Block> Chain { get; set; }
-        public int Difficulty { get; set; } = 6;
+        public int Difficulty { get; set; } = 4;
         private readonly int _targetTimePerBlock = 2000; // Target time per block in milliseconds
         private readonly int _adjustmentInterval = 2; // Number of blocks after which to adjust difficulty
 
@@ -23,13 +23,13 @@ namespace BlockChain.Services
 
         private void CreateGenesisBlock()
         {
-            var genesisBlock = new Block(0, new List<Transaction>(), "Genesis Block", 1);
+            var genesisBlock = new Block(0, new List<Transaction>(), "Genesis Block", Difficulty);
 
-            _miningService.MineBlock(genesisBlock, 1, showProgress: false);
+            _miningService.MineBlock(genesisBlock, Difficulty, showProgress: false);
             Chain.Add(genesisBlock);
         }
 
-        public void AddBlock(List<Transaction> transactions)
+        public void AddBlock(List<Transaction> transactions, bool showProgress = true)
         {
             foreach (var transaction in transactions)
             {
@@ -45,7 +45,7 @@ namespace BlockChain.Services
             var lastBlock = Chain.Last();
             var newBlock = new Block(lastBlock.Index + 1, transactionCopy, lastBlock.Hash, Difficulty);
 
-            _miningService.MineBlock(newBlock, Difficulty);
+            _miningService.MineBlock(newBlock, Difficulty, showProgress);
             Chain.Add(newBlock);
 
             if (newBlock.Index % _adjustmentInterval == 0)

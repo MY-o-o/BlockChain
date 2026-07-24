@@ -1,23 +1,26 @@
-﻿using BlockChain.Models;
+using BlockChain.Models;
 using BlockChain.Services;
-using System.Text;
-using System.Text.RegularExpressions;
 using Spectre.Console;
+using System.Text;
 
 Console.OutputEncoding = Encoding.UTF8;
-
-static bool IsValidHashPrefix(string input)
-{
-    if (string.IsNullOrEmpty(input)) return false;
-    return Regex.IsMatch(input, @"^[0-9a-fA-F]{1,64}$");
-}
 
 var hashingService = new HashingService();
 var miningService = new MiningService(hashingService);
 var transactionService = new TransactionService();
 var blockChainService = new BlockChainService(hashingService, miningService, transactionService);
+var tamperingService = new BlockchainTamperingService(miningService);
 
-List<Transaction> pendingTransactions = new List<Transaction>();
+for (int blockNumber = 1; blockNumber < 5; blockNumber++)
+{
+    blockChainService.Difficulty = 4;
+    blockChainService.AddBlock(
+        [new Transaction($"Wallet-{blockNumber}", $"Wallet-{blockNumber + 1}", blockNumber * 10)],
+        showProgress: false);
+}
+blockChainService.Difficulty = 4;
+
+List<Transaction> pendingTransactions = [];
 while (true)
 {
     Console.WriteLine("Block Management Menu:");
@@ -29,9 +32,10 @@ while (true)
     Console.WriteLine("6. Add a new transaction");
     Console.WriteLine("7. Display pending transactions");
     Console.WriteLine("8. Test mining efficiency");
-    Console.WriteLine("9. Exit");
+    Console.WriteLine("9. Hack the blockchain");
+    Console.WriteLine("10. Exit");
     Console.Write("Enter your choice: ");
-    var selectedOption = Console.ReadLine();
+    string? selectedOption = Console.ReadLine();
 
     switch (selectedOption)
     {
@@ -57,27 +61,24 @@ while (true)
                 blockChainService.Difficulty--;
                 Console.WriteLine($"Difficulty decreased to {blockChainService.Difficulty}");
             }
-            else Console.WriteLine("Difficulty cannot be less than 1.");
+            else
+            {
+                Console.WriteLine("Difficulty cannot be less than 1.");
+            }
             break;
         case "6":
             pendingTransactions.Add(new Transaction("Alice", "Bob", 100));
-
-            //Console.Write("Enter transaction data: ");
-            //var transactionData = Console.ReadLine();
-            //if (!string.IsNullOrEmpty(transactionData))
-            //{
-            //    var transaction = new Transaction(transactionData);
-            //    pendingTransactions.Add(transaction);
-            //    Console.WriteLine("Transaction added to pending transactions.");
-            //}
-            //else
-            //{
-            //    Console.WriteLine("Transaction data cannot be empty.");
-            //}
+            Console.WriteLine("Transaction added.");
             break;
         case "7":
-            if (pendingTransactions.Count == 0) Console.WriteLine("No pending transactions.");
-            else BlockChainDisplayService.DisplayTransactions(pendingTransactions);
+            if (pendingTransactions.Count == 0)
+            {
+                Console.WriteLine("No pending transactions.");
+            }
+            else
+            {
+                BlockChainDisplayService.DisplayTransactions(pendingTransactions);
+            }
             break;
         case "8":
             Console.Write("Enter the max difficulty: ");
@@ -89,7 +90,7 @@ while (true)
                     break;
                 }
 
-                miningService.TestMiningEffieciency(maxDifficulty);
+                miningService.TestMiningEfficiency(maxDifficulty);
             }
             else
             {
@@ -97,11 +98,51 @@ while (true)
             }
             break;
         case "9":
+            Console.Write($"Enter block index to tamper with (0-{blockChainService.Chain.Count - 1}): ");
+            if (!int.TryParse(Console.ReadLine(), out int blockIndex))
+            {
+                Console.WriteLine("Invalid block index.");
+                break;
+            }
+
+            Console.Write("Forged sender: ");
+            string forgedSender = Console.ReadLine() ?? string.Empty;
+            Console.Write("Forged recipient: ");
+            string forgedRecipient = Console.ReadLine() ?? string.Empty;
+            Console.Write("Forged amount: ");
+
+            if (!decimal.TryParse(Console.ReadLine(), out decimal forgedAmount))
+            {
+                Console.WriteLine("Invalid amount.");
+                break;
+            }
+
+            try
+            {
+                var forgedTransaction = new Transaction(
+                    forgedSender,
+                    forgedRecipient,
+                    forgedAmount);
+
+                await tamperingService.HackChain(
+                    blockChainService,
+                    blockIndex,
+                    forgedTransaction);
+
+                BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValid());
+            }
+            catch (ArgumentException exception)
+            {
+                Console.WriteLine(exception.Message);
+            }
+            break;
+        case "10":
             return;
         default:
             Console.WriteLine("Invalid option. Please try again.");
             break;
     }
+
     Console.Write("Press any key to continue...");
     Console.ReadKey();
     Console.Clear();

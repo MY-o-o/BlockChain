@@ -11,6 +11,7 @@ namespace BlockChain.Models
         public string To { get; set; }
         public decimal Amount { get; set; }
         public DateTime TimeStamp { get; set; }
+        public byte[] Signature { get; set; } = [];
 
         public Transaction(string from, string to, decimal amount)
         {
@@ -28,6 +29,11 @@ namespace BlockChain.Models
             return $"{Id}{From}{To}{Amount}{TimeStamp}";
         }
 
+        public byte[] GetDataToSign()
+        {
+            return Encoding.UTF8.GetBytes(ToRowString());
+        }
+
         public override string ToString()
         {
             return $"Transaction [Id={Id}, From={From}, To={To}, Amount={Amount}, TimeStamp={TimeStamp:o}]";
@@ -38,6 +44,7 @@ namespace BlockChain.Models
             return new Transaction(From, To, Amount)
             {
                 Id = Id,
+                Signature = Signature,
                 TimeStamp = TimeStamp
             };
         }

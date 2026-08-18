@@ -7,10 +7,13 @@ Console.OutputEncoding = Encoding.UTF8;
 
 var hashingService = new HashingService();
 var miningService = new MiningService(hashingService);
-var transactionService = new TransactionService();
+var walletService = new WalletService();
+var transactionService = new TransactionService(walletService);
 var blockChainService = new BlockChainService(hashingService, miningService, transactionService);
 var tamperingService = new BlockchainTamperingService(miningService);
 
+
+// tmp code for the example of working blockchain
 for (int blockNumber = 1; blockNumber < 5; blockNumber++)
 {
     blockChainService.Difficulty = 4;
@@ -19,6 +22,11 @@ for (int blockNumber = 1; blockNumber < 5; blockNumber++)
         showProgress: false);
 }
 blockChainService.Difficulty = 4;
+
+var aliceWallet = walletService.CreateWallet("Alice");
+var bobWallet = walletService.CreateWallet("Bob");
+
+// end of tmp code
 
 List<Transaction> pendingTransactions = [];
 while (true)
@@ -67,7 +75,8 @@ while (true)
             }
             break;
         case "6":
-            pendingTransactions.Add(new Transaction("Alice", "Bob", 100));
+            var newTransaction = transactionService.CreateTransaction(aliceWallet.Address, bobWallet.Address, 100, aliceWallet);
+            pendingTransactions.Add(newTransaction);
             Console.WriteLine("Transaction added.");
             break;
         case "7":

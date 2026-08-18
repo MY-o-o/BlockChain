@@ -38,6 +38,12 @@ namespace BlockChain.Services
                 {
                     throw new InvalidOperationException($"Invalid transaction: {result.errorMessage}");
                 }
+
+                var senderBalance = GetWalletBalance(transaction.From);
+                if (senderBalance < transaction.Amount)
+                {
+                    throw new InvalidOperationException($"Insufficient balance for transaction from {transaction.From} to {transaction.To}. Available balance: {senderBalance}, required: {transaction.Amount}");
+                }
             }
 
             var transactionCopy = transactions.Select(t => (Transaction)t.Clone()).ToList();
@@ -82,6 +88,26 @@ namespace BlockChain.Services
                 if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty))) return false;
             }
             return true;
+        }
+
+        public decimal GetWalletBalance(string walletAddress)
+        {
+            decimal balance = 0;
+            foreach (var block in Chain)
+            {
+                foreach (var transaction in block.Transactions)
+                {
+                    if (transaction.From == walletAddress)
+                    {
+                        balance -= transaction.Amount;
+                    }
+                    if (transaction.To == walletAddress)
+                    {
+                        balance += transaction.Amount;
+                    }
+                }
+            }
+            return balance;
         }
     }
 }

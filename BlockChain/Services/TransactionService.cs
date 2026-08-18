@@ -4,9 +4,19 @@ namespace BlockChain.Services
 {
     public class TransactionService
     {
-        public Transaction CreateTransaction(string from, string to, decimal amount)
+        private readonly WalletService _walletService;
+
+        public TransactionService(WalletService walletService)
         {
-            return new Transaction(from, to, amount);
+            _walletService = walletService;
+        }
+
+
+        public Transaction CreateTransaction(string from, string to, decimal amount, Wallet wallet)
+        {
+            var tx = new Transaction(from, to, amount);
+            tx.Signature = wallet.Sign(tx.GetDataToSign());
+            return tx;
         }
 
         public (bool isValid, string errorMessage) ValidateTransaction(Transaction transaction)
@@ -15,15 +25,21 @@ namespace BlockChain.Services
             {
                 return (false, "Sender address is required.");
             }
-
             if (string.IsNullOrWhiteSpace(transaction.To))
             {
                 return (false, "Recipient address is required.");
             }
-
             if (transaction.Amount <= 0)
             {
                 return (false, "Transaction amount must be greater than zero.");
+            }
+            if (transaction.Signature == null || transaction.Signature.Length == 0)
+            {
+                return (false, "Transaction signature is required.");
+            }
+            if (!_walletService.VerifySignature(transaction.GetDataToSign(), transaction.Signature, Convert.FromBase64String(transaction.From)))
+            {
+                return (false, "Invalid transaction signature.");
             }
 
             return (true, string.Empty);

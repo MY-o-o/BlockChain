@@ -7,8 +7,9 @@ namespace BlockChain.Services
         private readonly HashingService _hashingService;
         private readonly MiningService _miningService;
         private readonly TransactionService _transactionService;
-        public List<Block> Chain { get; set; }
-        public int Difficulty { get; set; } = 4;
+        public List<Block> Chain { get; set; } = [];
+        public List<Transaction> PendingTransactions { get; set; } = [];
+        public int Difficulty { get; set; } = 5;
         private readonly int _targetTimePerBlock = 2000; // Target time per block in milliseconds
         private readonly int _adjustmentInterval = 2; // Number of blocks after which to adjust difficulty
         private readonly decimal _rewardAmount = 50; // Reward amount for mining a block
@@ -19,7 +20,6 @@ namespace BlockChain.Services
             _hashingService = hashingService;
             _miningService = miningService;
             _transactionService = transactionService;
-            Chain = new List<Block>();
             CreateGenesisBlock();
         }
 
@@ -31,44 +31,43 @@ namespace BlockChain.Services
             Chain.Add(genesisBlock);
         }
 
-        public void AddBlock(List<Transaction> pendingTransactions, string minerAddress, bool showProgress = true)
+        public void MinePendingTransactions(string minerAddress, bool showProgress = true)
         {
-            var currentBalances = new Dictionary<string, decimal>();
-            foreach (var transaction in pendingTransactions)
-            {
-                var result = _transactionService.ValidateTransaction(transaction);
-                if (!result.isValid)
-                {
-                    throw new InvalidOperationException($"Invalid transaction: {result.errorMessage}");
-                }
-
-                if (!currentBalances.ContainsKey(transaction.From))
-                {
-                    currentBalances[transaction.From] = GetWalletBalance(transaction.From);
-                }
-
-                if(currentBalances[transaction.From] < transaction.Amount)
-                {
-                    throw new InvalidOperationException($"Insufficient balance for transaction from {transaction.From} to {transaction.To}. Available balance: {currentBalances[transaction.From]}, required: {transaction.Amount}");
-                }
-                currentBalances[transaction.From] -= transaction.Amount;
-            }
-
-            var transactionCopy = pendingTransactions.Select(t => (Transaction)t.Clone()).ToList();
-
+            var transactionsCopy = PendingTransactions.Select(t => (Transaction)t.Clone()).ToList();
             var rewardTransaction = new Transaction("Coinbase", minerAddress, GetCurrentReward());
-            transactionCopy.Insert(0, rewardTransaction);
+            transactionsCopy.Insert(0, rewardTransaction);
 
             var lastBlock = Chain.Last();
-            var newBlock = new Block(lastBlock.Index + 1, transactionCopy, lastBlock.Hash, Difficulty);
+            var newBlock = new Block(lastBlock.Index + 1, transactionsCopy, lastBlock.Hash, Difficulty);
 
+            //TODO: Insert a varible newBlock as a ref newBlock
             _miningService.MineBlock(newBlock, Difficulty, showProgress);
             Chain.Add(newBlock);
+            PendingTransactions.Clear();
 
             if (newBlock.Index % _adjustmentInterval == 0)
             {
                 AdjustDifficulty();
             }
+        }
+
+        public void AddTransaction(Transaction newTransaction)
+        {
+            var (isValid, errorMessage) = _transactionService.ValidateTransaction(newTransaction);
+            if (!isValid)
+            {
+                throw new InvalidOperationException($"Invalid transaction: {errorMessage}");
+            }
+
+            var senderMinedBalance = GetWalletBalance(newTransaction.From);
+            var pendingBalance = PendingTransactions.Sum( t => t.From == newTransaction.From ? t.Amount : 0);
+            var senderBalance = senderMinedBalance - pendingBalance;
+            if (senderBalance < newTransaction.Amount)
+            {
+                throw new InvalidOperationException($"Insufficient balance for transaction from {newTransaction.From} to {newTransaction.To}. Available balance: {senderBalance}, required: {newTransaction.Amount}");
+            }
+
+            PendingTransactions.Add(newTransaction);
         }
 
         private void AdjustDifficulty()

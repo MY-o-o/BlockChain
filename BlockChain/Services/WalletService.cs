@@ -5,14 +5,14 @@ namespace BlockChain.Services
 {
     public class WalletService
     {
-        public Wallet CreateWallet(string name)
+        public Wallet CreateWallet(string alias)
         {
             using (var ecdsa = ECDsa.Create())
             {
                 var privateKey = ecdsa.ExportECPrivateKey();
                 var publicKey = ecdsa.ExportSubjectPublicKeyInfo();
                 var address = Convert.ToBase64String(publicKey); // Simplified address generation
-                return new Wallet(name, address, publicKey, privateKey);
+                return new Wallet(alias, address, publicKey, privateKey);
             }
         }
 

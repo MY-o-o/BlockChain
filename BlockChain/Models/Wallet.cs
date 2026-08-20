@@ -6,15 +6,15 @@ namespace BlockChain.Models
 {
     public class Wallet
     {
-        public string Name { get; set; }
+        public string Alias { get; set; }
         public string Address { get; set; }
         public byte[] PublicKey { get; }
         public byte[] PrivateKey { get; set; }
 
         public Wallet() { }
-        public Wallet(string name, string address, byte[] publicKey, byte[] privateKey)
+        public Wallet(string alias, string address, byte[] publicKey, byte[] privateKey)
         {
-            Name = name;
+            Alias = alias;
             Address = address;
             PublicKey = publicKey;
             PrivateKey = privateKey;

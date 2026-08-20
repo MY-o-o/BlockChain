@@ -20,7 +20,6 @@ var bobWallet = walletService.CreateWallet("Bob");
 
 // end of tmp code
 
-List<Transaction> pendingTransactions = [];
 while (true)
 {
     Console.WriteLine("Block Management Menu:");
@@ -42,9 +41,7 @@ while (true)
     switch (selectedOption)
     {
         case "1":
-            blockChainService.AddBlock(pendingTransactions, aliceWallet.Address);
-            pendingTransactions.Clear();
-
+            blockChainService.MinePendingTransactions(aliceWallet.Address);
             Console.WriteLine("Block added!");
             break;
         case "2":
@@ -69,18 +66,25 @@ while (true)
             }
             break;
         case "6":
-            var newTransaction = transactionService.CreateTransaction(aliceWallet.Address, bobWallet.Address, 100, aliceWallet);
-            pendingTransactions.Add(newTransaction);
-            Console.WriteLine("Transaction added.");
+            try
+            {
+                var newTransaction = transactionService.CreateTransaction(aliceWallet.Address, bobWallet.Address, 100, aliceWallet);
+                blockChainService.AddTransaction(newTransaction);
+                Console.WriteLine("Transaction added.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
             break;
         case "7":
-            if (pendingTransactions.Count == 0)
+            if (blockChainService.PendingTransactions.Count == 0)
             {
                 Console.WriteLine("No pending transactions.");
             }
             else
             {
-                BlockChainDisplayService.DisplayTransactions(pendingTransactions);
+                BlockChainDisplayService.DisplayTransactions(blockChainService.PendingTransactions);
             }
             break;
         case "8":

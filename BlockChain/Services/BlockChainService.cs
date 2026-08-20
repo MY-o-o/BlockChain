@@ -11,6 +11,7 @@ namespace BlockChain.Services
         public int Difficulty { get; set; } = 4;
         private readonly int _targetTimePerBlock = 2000; // Target time per block in milliseconds
         private readonly int _adjustmentInterval = 2; // Number of blocks after which to adjust difficulty
+        private readonly decimal _rewardAmount = 50; // Reward amount for mining a block
 
         public BlockChainService(HashingService hashingService, MiningService miningService, TransactionService transactionService)
         {
@@ -29,9 +30,10 @@ namespace BlockChain.Services
             Chain.Add(genesisBlock);
         }
 
-        public void AddBlock(List<Transaction> transactions, bool showProgress = true)
+        public void AddBlock(List<Transaction> pendingTransactions, string minerAddress, bool showProgress = true)
         {
-            foreach (var transaction in transactions)
+            var currentBalances = new Dictionary<string, decimal>();
+            foreach (var transaction in pendingTransactions)
             {
                 var result = _transactionService.ValidateTransaction(transaction);
                 if (!result.isValid)
@@ -39,14 +41,22 @@ namespace BlockChain.Services
                     throw new InvalidOperationException($"Invalid transaction: {result.errorMessage}");
                 }
 
-                var senderBalance = GetWalletBalance(transaction.From);
-                if (senderBalance < transaction.Amount)
+                if (!currentBalances.ContainsKey(transaction.From))
                 {
-                    throw new InvalidOperationException($"Insufficient balance for transaction from {transaction.From} to {transaction.To}. Available balance: {senderBalance}, required: {transaction.Amount}");
+                    currentBalances[transaction.From] = GetWalletBalance(transaction.From);
                 }
+
+                if(currentBalances[transaction.From] < transaction.Amount)
+                {
+                    throw new InvalidOperationException($"Insufficient balance for transaction from {transaction.From} to {transaction.To}. Available balance: {currentBalances[transaction.From]}, required: {transaction.Amount}");
+                }
+                currentBalances[transaction.From] -= transaction.Amount;
             }
 
-            var transactionCopy = transactions.Select(t => (Transaction)t.Clone()).ToList();
+            var transactionCopy = pendingTransactions.Select(t => (Transaction)t.Clone()).ToList();
+
+            var rewardTransaction = new Transaction("Coinbase", minerAddress, _rewardAmount);
+            transactionCopy.Add(rewardTransaction);
 
             var lastBlock = Chain.Last();
             var newBlock = new Block(lastBlock.Index + 1, transactionCopy, lastBlock.Hash, Difficulty);
@@ -108,6 +118,35 @@ namespace BlockChain.Services
                 }
             }
             return balance;
+        }
+
+        public Dictionary<string, decimal> GetPendingBalances(List<Transaction> pendingTransactions)
+        {
+            var pendingBalances = new Dictionary<string, decimal>();
+            foreach (var transaction in pendingTransactions)
+            {
+                pendingBalances[transaction.From] -= transaction.Amount;
+                pendingBalances[transaction.To] += transaction.Amount;
+            }
+            return pendingBalances;
+        }
+
+        public decimal GetTotalSupply()
+        {
+            decimal totalSupply = 0;
+            
+            foreach (var block in Chain)
+            {
+                foreach (var transaction in block.Transactions)
+                {
+                    if (transaction.From == "Coinbase")
+                    {
+                        totalSupply += transaction.Amount;
+                    }
+                }
+            }
+
+            return totalSupply;
         }
     }
 }

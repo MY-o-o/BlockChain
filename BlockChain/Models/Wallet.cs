@@ -24,7 +24,7 @@ namespace BlockChain.Models
         {
             using (var ecdsa = System.Security.Cryptography.ECDsa.Create())
             {
-                ecdsa.ImportSubjectPublicKeyInfo(PublicKey, out _);
+                ecdsa.ImportECPrivateKey(PrivateKey, out _);
                 return ecdsa.SignData(data, System.Security.Cryptography.HashAlgorithmName.SHA256);
             }
         }

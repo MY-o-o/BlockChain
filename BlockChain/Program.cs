@@ -14,14 +14,6 @@ var tamperingService = new BlockchainTamperingService(miningService);
 
 
 // tmp code for the example of working blockchain
-for (int blockNumber = 1; blockNumber < 5; blockNumber++)
-{
-    blockChainService.Difficulty = 4;
-    blockChainService.AddBlock(
-        [new Transaction($"Wallet-{blockNumber}", $"Wallet-{blockNumber + 1}", blockNumber * 10)],
-        showProgress: false);
-}
-blockChainService.Difficulty = 4;
 
 var aliceWallet = walletService.CreateWallet("Alice");
 var bobWallet = walletService.CreateWallet("Bob");
@@ -32,23 +24,24 @@ List<Transaction> pendingTransactions = [];
 while (true)
 {
     Console.WriteLine("Block Management Menu:");
-    Console.WriteLine("1. Add a new block");
+    Console.WriteLine("1. Add a new block (Alice)");
     Console.WriteLine("2. Display the blockchain");
     Console.WriteLine("3. Validate the blockchain");
     Console.WriteLine("4. Change difficulty ++");
     Console.WriteLine("5. Change difficulty --");
-    Console.WriteLine("6. Add a new transaction");
+    Console.WriteLine("6. Transfer 100 coins from Alice to Bob");
     Console.WriteLine("7. Display pending transactions");
     Console.WriteLine("8. Test mining efficiency");
     Console.WriteLine("9. Hack the blockchain");
-    Console.WriteLine("10. Exit");
+    Console.WriteLine("10. Display total blockchain supply");
+    Console.WriteLine("11. Exit");
     Console.Write("Enter your choice: ");
     string? selectedOption = Console.ReadLine();
 
     switch (selectedOption)
     {
         case "1":
-            blockChainService.AddBlock(pendingTransactions);
+            blockChainService.AddBlock(pendingTransactions, aliceWallet.Address);
             pendingTransactions.Clear();
 
             Console.WriteLine("Block added!");
@@ -146,6 +139,9 @@ while (true)
             }
             break;
         case "10":
+            Console.WriteLine("Total blockchain supply: " + blockChainService.GetTotalSupply());
+            break;
+        case "11":
             return;
         default:
             Console.WriteLine("Invalid option. Please try again.");

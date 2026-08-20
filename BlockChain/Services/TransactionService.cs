@@ -21,6 +21,11 @@ namespace BlockChain.Services
 
         public (bool isValid, string errorMessage) ValidateTransaction(Transaction transaction)
         {
+            if (transaction.From == "Coinbase")
+            {
+                return (true, string.Empty);
+            }
+
             if (string.IsNullOrWhiteSpace(transaction.From))
             {
                 return (false, "Sender address is required.");

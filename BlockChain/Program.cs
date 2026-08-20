@@ -34,7 +34,8 @@ while (true)
     Console.WriteLine("8. Test mining efficiency");
     Console.WriteLine("9. Hack the blockchain");
     Console.WriteLine("10. Display total blockchain supply");
-    Console.WriteLine("11. Exit");
+    Console.WriteLine("11. Tamper with the coinbase transaction in the first block");
+    Console.WriteLine("12. Exit");
     Console.Write("Enter your choice: ");
     string? selectedOption = Console.ReadLine();
 
@@ -142,6 +143,9 @@ while (true)
             Console.WriteLine("Total blockchain supply: " + blockChainService.GetTotalSupply());
             break;
         case "11":
+            blockChainService.Chain[1].Transactions.First().Amount = 9999;
+            break;
+        case "12":
             return;
         default:
             Console.WriteLine("Invalid option. Please try again.");

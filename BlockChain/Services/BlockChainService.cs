@@ -12,6 +12,7 @@ namespace BlockChain.Services
         private readonly int _targetTimePerBlock = 2000; // Target time per block in milliseconds
         private readonly int _adjustmentInterval = 2; // Number of blocks after which to adjust difficulty
         private readonly decimal _rewardAmount = 50; // Reward amount for mining a block
+        private readonly int _halvingInterval = 3; // Number of blocks after which the reward is halved
 
         public BlockChainService(HashingService hashingService, MiningService miningService, TransactionService transactionService)
         {
@@ -55,8 +56,8 @@ namespace BlockChain.Services
 
             var transactionCopy = pendingTransactions.Select(t => (Transaction)t.Clone()).ToList();
 
-            var rewardTransaction = new Transaction("Coinbase", minerAddress, _rewardAmount);
-            transactionCopy.Add(rewardTransaction);
+            var rewardTransaction = new Transaction("Coinbase", minerAddress, GetCurrentReward());
+            transactionCopy.Insert(0, rewardTransaction);
 
             var lastBlock = Chain.Last();
             var newBlock = new Block(lastBlock.Index + 1, transactionCopy, lastBlock.Hash, Difficulty);
@@ -93,9 +94,16 @@ namespace BlockChain.Services
             {
                 var currentBlock = Chain[i];
                 var previousBlock = Chain[i - 1];
+
+                int pastHalvings = currentBlock.Index / _halvingInterval; 
+                decimal expectedReward = _rewardAmount / (decimal)Math.Pow(2, pastHalvings);
+
                 if (currentBlock.Hash != _hashingService.ComputeHash(currentBlock)) return false;
                 if (currentBlock.PrevHash != previousBlock.Hash) return false;
                 if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty))) return false;
+
+                if (currentBlock.Transactions.First().From != "Coinbase") return false;
+                if (currentBlock.Transactions.First().Amount != expectedReward) return false;
             }
             return true;
         }
@@ -147,6 +155,12 @@ namespace BlockChain.Services
             }
 
             return totalSupply;
+        }
+
+        public decimal GetCurrentReward()
+        {
+            int halvingCount = Chain.Count / _halvingInterval;
+            return _rewardAmount / (decimal)Math.Pow(2, halvingCount);
         }
     }
 }

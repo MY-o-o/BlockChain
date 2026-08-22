@@ -16,8 +16,8 @@ public readonly record struct MiningProgressSnapshot(
 
 public class MiningService
 {
-    private const long RangeSize = 50_000;
-    private const long AttemptBatchSize = 2048;
+    private const long RangeSize = 25_000;
+    private const long AttemptBatchSize = 50_000;
     private static readonly char[] MeasureUnits = [' ', 'k', 'M', 'G', 'T', 'P', 'E'];
     private readonly HashingService _hashingService;
 
@@ -343,6 +343,13 @@ public class MiningService
             $"Nonce: {result.Nonce}, Attempts: {result.Attempts:N0}, Time taken: {result.TimeTaken}");
     }
 
+    private readonly record struct MiningResult(
+        double HashRate,
+        short MeasureUnitIndex,
+        string TimeTaken,
+        long Nonce,
+        long Attempts);
+
     public void TestMiningEfficiency(short maxDifficulty)
     {
         Table efficiencyTable = new Table()
@@ -383,11 +390,4 @@ public class MiningService
                 ctx.Refresh();
             });
     }
-
-    private readonly record struct MiningResult(
-        double HashRate,
-        short MeasureUnitIndex,
-        string TimeTaken,
-        long Nonce,
-        long Attempts);
 }

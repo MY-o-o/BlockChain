@@ -1,4 +1,6 @@
 ﻿using BlockChain.Models;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace BlockChain.Services
 {
@@ -13,7 +15,9 @@ namespace BlockChain.Services
         private readonly int _targetTimePerBlock = 2000; // Target time per block in milliseconds
         private readonly int _adjustmentInterval = 2; // Number of blocks after which to adjust difficulty
         private readonly decimal _rewardAmount = 50; // Reward amount for mining a block
+        private readonly int _maxBlockSize = 2; // Maximum number of transactions per block
         private readonly int _halvingInterval = 3; // Number of blocks after which the reward is halved
+        private readonly string _chainFilePath = "blockchain.json";
 
         public BlockChainService(HashingService hashingService, MiningService miningService, TransactionService transactionService)
         {
@@ -33,8 +37,9 @@ namespace BlockChain.Services
 
         public void MinePendingTransactions(string minerAddress, bool showProgress = true)
         {
-            var transactionsCopy = PendingTransactions.Select(t => (Transaction)t.Clone()).ToList();
-            var rewardTransaction = new Transaction("Coinbase", minerAddress, GetCurrentReward());
+            var transactionsCopy = PendingTransactions.OrderByDescending(t => t.Fee).Take(_maxBlockSize).ToList();
+            var totalFees = transactionsCopy.Sum(t => t.Fee);
+            var rewardTransaction = new Transaction("Coinbase", minerAddress, GetCurrentReward() + totalFees, 0);
             transactionsCopy.Insert(0, rewardTransaction);
 
             var lastBlock = Chain.Last();
@@ -43,7 +48,11 @@ namespace BlockChain.Services
             //TODO: Insert a varible newBlock as a ref newBlock
             _miningService.MineBlock(newBlock, Difficulty, showProgress);
             Chain.Add(newBlock);
-            PendingTransactions.Clear();
+
+            foreach (var transaction in transactionsCopy)
+            {
+                PendingTransactions.Remove(transaction);
+            }
 
             if (newBlock.Index % _adjustmentInterval == 0)
             {
@@ -59,12 +68,10 @@ namespace BlockChain.Services
                 throw new InvalidOperationException($"Invalid transaction: {errorMessage}");
             }
 
-            var senderMinedBalance = GetWalletBalance(newTransaction.From);
-            var pendingBalance = PendingTransactions.Sum( t => t.From == newTransaction.From ? t.Amount : 0);
-            var senderBalance = senderMinedBalance - pendingBalance;
-            if (senderBalance < newTransaction.Amount)
+            var senderBalance = GetWalletBalance(newTransaction.From);
+            if (senderBalance < newTransaction.Amount + newTransaction.Fee)
             {
-                throw new InvalidOperationException($"Insufficient balance for transaction from {newTransaction.From} to {newTransaction.To}. Available balance: {senderBalance}, required: {newTransaction.Amount}");
+                throw new InvalidOperationException($"Insufficient balance for transaction from\n{newTransaction.From}\nto\n{newTransaction.To}\nAvailable balance: {senderBalance}; required: {newTransaction.Amount} + {newTransaction.Fee}(fee)");
             }
 
             PendingTransactions.Add(newTransaction);
@@ -87,15 +94,16 @@ namespace BlockChain.Services
             }
         }
 
-        public bool IsValid()
+        public bool IsValidChain(List<Block> chain)
         {
-            for (int i = 1; i < Chain.Count; i++)
+            for (int i = 1; i < chain.Count; i++)
             {
-                var currentBlock = Chain[i];
-                var previousBlock = Chain[i - 1];
+                var currentBlock = chain[i];
+                var previousBlock = chain[i - 1];
 
-                int pastHalvings = currentBlock.Index / _halvingInterval; 
+                int pastHalvings = currentBlock.Index / _halvingInterval;
                 decimal expectedReward = _rewardAmount / (decimal)Math.Pow(2, pastHalvings);
+                expectedReward += chain[i].Transactions.Sum(t => t.From == "Coinbase" ? 0 : t.Fee);
 
                 if (currentBlock.Hash != _hashingService.ComputeHash(currentBlock)) return false;
                 if (currentBlock.PrevHash != previousBlock.Hash) return false;
@@ -116,7 +124,7 @@ namespace BlockChain.Services
                 {
                     if (transaction.From == walletAddress)
                     {
-                        balance -= transaction.Amount;
+                        balance -= transaction.Amount + transaction.Fee;
                     }
                     if (transaction.To == walletAddress)
                     {
@@ -124,24 +132,16 @@ namespace BlockChain.Services
                     }
                 }
             }
-            return balance;
-        }
 
-        public Dictionary<string, decimal> GetPendingBalances(List<Transaction> pendingTransactions)
-        {
-            var pendingBalances = new Dictionary<string, decimal>();
-            foreach (var transaction in pendingTransactions)
-            {
-                pendingBalances[transaction.From] -= transaction.Amount;
-                pendingBalances[transaction.To] += transaction.Amount;
-            }
-            return pendingBalances;
+            balance -= PendingTransactions.Sum(t => t.From == walletAddress ? t.Amount + t.Fee : 0);
+
+            return balance;
         }
 
         public decimal GetTotalSupply()
         {
             decimal totalSupply = 0;
-            
+
             foreach (var block in Chain)
             {
                 foreach (var transaction in block.Transactions)
@@ -160,6 +160,33 @@ namespace BlockChain.Services
         {
             int halvingCount = Chain.Count / _halvingInterval;
             return _rewardAmount / (decimal)Math.Pow(2, halvingCount);
+        }
+
+        private readonly JsonSerializerOptions jsonOption = new() { WriteIndented = true };
+        public void SaveChain()
+        {
+            var json = JsonSerializer.Serialize(Chain, jsonOption);
+
+            File.WriteAllText(_chainFilePath, json);
+        }
+
+        public void LoadChain()
+        {
+            if (!File.Exists(_chainFilePath))
+            {
+                throw new InvalidOperationException("No existing blockchain found.");
+            }
+
+            var json = File.ReadAllText(_chainFilePath);
+            var loadedChain = JsonSerializer.Deserialize<List<Block>>(json);
+
+            if (loadedChain == null || !IsValidChain(loadedChain))
+            {
+                throw new InvalidOperationException("Failed to load blockchain.");
+            }
+
+            Chain = loadedChain;
+            Difficulty = Chain.Last().Difficulty;
         }
     }
 }

@@ -12,9 +12,9 @@ namespace BlockChain.Services
         }
 
 
-        public Transaction CreateTransaction(string from, string to, decimal amount, Wallet wallet)
+        public Transaction CreateTransaction(string from, string to, decimal amount, decimal fee, Wallet wallet)
         {
-            var tx = new Transaction(from, to, amount);
+            var tx = new Transaction(from, to, amount, fee);
             tx.Signature = wallet.Sign(tx.GetDataToSign());
             return tx;
         }

@@ -10,23 +10,25 @@ namespace BlockChain.Models
         public string From { get; set; }
         public string To { get; set; }
         public decimal Amount { get; set; }
+        public decimal Fee { get; set; }
         public DateTime TimeStamp { get; set; }
         public byte[] Signature { get; set; } = [];
 
-        public Transaction(string from, string to, decimal amount)
+        public Transaction(string from, string to, decimal amount, decimal fee)
         {
             Id = Guid.NewGuid();
             From = from;
             To = to;
             Amount = amount;
+            Fee = fee;
             TimeStamp = DateTime.UtcNow;
         }
 
-        public Transaction() : this(string.Empty, string.Empty, 0) { }
+        public Transaction() : this(string.Empty, string.Empty, 0, 0) { }
 
         public string ToRowString()
         {
-            return $"{Id}{From}{To}{Amount}{TimeStamp}";
+            return $"{Id}{From}{To}{Amount}{Fee}{TimeStamp}";
         }
 
         public byte[] GetDataToSign()
@@ -36,12 +38,12 @@ namespace BlockChain.Models
 
         public override string ToString()
         {
-            return $"Transaction [Id={Id}, From={From}, To={To}, Amount={Amount}, TimeStamp={TimeStamp:o}]";
+            return $"Transaction ID: {Id}\nFrom: {From}\nTo: {To}\nAmount: {Amount}\nFee: {Fee}\nTimeStamp: {TimeStamp:o}";
         }
 
         public object Clone()
         {
-            return new Transaction(From, To, Amount)
+            return new Transaction(From, To, Amount, Fee)
             {
                 Id = Id,
                 Signature = Signature,

@@ -20,41 +20,68 @@ var bobWallet = walletService.CreateWallet("Bob");
 
 // end of tmp code
 
+try
+{
+    blockChainService.LoadChain();
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Error loading blockchain: {ex.Message}");
+    Console.WriteLine("Starting with a new blockchain.\n");
+    Console.Write("Press any key to continue...");
+    Console.ReadKey();
+    Console.Clear();
+}
+
 while (true)
 {
-    Console.WriteLine("Block Management Menu:");
-    Console.WriteLine("1. Add a new block (Alice)");
-    Console.WriteLine("2. Display the blockchain");
-    Console.WriteLine("3. Validate the blockchain");
-    Console.WriteLine("4. Change difficulty ++");
-    Console.WriteLine("5. Change difficulty --");
-    Console.WriteLine("6. Transfer 100 coins from Alice to Bob");
-    Console.WriteLine("7. Display pending transactions");
-    Console.WriteLine("8. Test mining efficiency");
-    Console.WriteLine("9. Hack the blockchain");
-    Console.WriteLine("10. Display total blockchain supply");
-    Console.WriteLine("11. Tamper with the coinbase transaction in the first block");
-    Console.WriteLine("12. Exit");
-    Console.Write("Enter your choice: ");
-    string? selectedOption = Console.ReadLine();
-
-    switch (selectedOption)
+    var menuOptions = new (short, string)[]
     {
-        case "1":
+        ( 1, "Add a new block (Alice)" ),
+        ( 2, "Display the blockchain" ),
+        ( 3, "Validate the blockchain" ),
+        ( 4, "Change difficulty ++" ),
+        ( 5, "Change difficulty --" ),
+        ( 6, "Display balance" ),
+        ( 7, "Transfer 100 coins from Alice to Bob" ),
+        ( 8, "Display pending transactions" ),
+        ( 9, "Test mining efficiency" ),
+        ( 10, "Tamper with a block" ),
+        ( 11, "Display total blockchain supply" ),
+        ( 12, "Exit" )
+    };
+
+    var prompt = new SelectionPrompt<(short, string)>()
+        .Title("[bold orange1]Block Management Menu[/]:")
+        .WrapAround()
+        .PageSize(20)
+        .MoreChoicesText("[grey](Move up and down to reveal more options)[/]")
+        .EnableSearch()
+        .SearchPlaceholderText("[grey](Type to search...)[/]")
+        .UseConverter(option => option.Item2)
+        .AddChoices(menuOptions);
+    prompt.HighlightStyle = new Style(foreground: Color.Orange3, decoration: Decoration.Bold);
+    prompt.SearchHighlightStyle = new Style(foreground: Color.Orange1, decoration: Decoration.Underline);
+
+    var selectedOption = AnsiConsole.Prompt(prompt);
+
+    switch (selectedOption.Item1)
+    {
+        case 1:
             blockChainService.MinePendingTransactions(aliceWallet.Address);
             Console.WriteLine("Block added!");
             break;
-        case "2":
+        case 2:
             BlockChainDisplayService.DisplayBlockChain(blockChainService.Chain);
             break;
-        case "3":
-            BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValid());
+        case 3:
+            BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValidChain(blockChainService.Chain));
             break;
-        case "4":
+        case 4:
             blockChainService.Difficulty++;
             Console.WriteLine($"Difficulty increased to {blockChainService.Difficulty}");
             break;
-        case "5":
+        case 5:
             if (blockChainService.Difficulty > 1)
             {
                 blockChainService.Difficulty--;
@@ -65,10 +92,19 @@ while (true)
                 Console.WriteLine("Difficulty cannot be less than 1.");
             }
             break;
-        case "6":
+        case 6:
+            Console.WriteLine($"Your balance: {blockChainService.GetWalletBalance(aliceWallet.Address)}");
+            break;
+        case 7:
+            //TODO: Implement customisable transaction creation with user input for recipient(?), fee and amount
             try
             {
-                var newTransaction = transactionService.CreateTransaction(aliceWallet.Address, bobWallet.Address, 100, aliceWallet);
+                Console.Write("Enter amount to transfer from Alice to Bob: ");
+                var amountToTransfer = decimal.Parse(Console.ReadLine(), System.Globalization.CultureInfo.InvariantCulture);
+                Console.Write("Enter transaction fee: ");
+                var transactionFee = decimal.Parse(Console.ReadLine(), System.Globalization.CultureInfo.InvariantCulture);
+
+                var newTransaction = transactionService.CreateTransaction(aliceWallet.Address, bobWallet.Address, amountToTransfer, transactionFee, aliceWallet);
                 blockChainService.AddTransaction(newTransaction);
                 Console.WriteLine("Transaction added.");
             }
@@ -77,7 +113,7 @@ while (true)
                 Console.WriteLine($"Error: {ex.Message}");
             }
             break;
-        case "7":
+        case 8:
             if (blockChainService.PendingTransactions.Count == 0)
             {
                 Console.WriteLine("No pending transactions.");
@@ -87,7 +123,7 @@ while (true)
                 BlockChainDisplayService.DisplayTransactions(blockChainService.PendingTransactions);
             }
             break;
-        case "8":
+        case 9:
             Console.Write("Enter the max difficulty: ");
             if (short.TryParse(Console.ReadLine(), out short maxDifficulty))
             {
@@ -104,7 +140,7 @@ while (true)
                 Console.WriteLine("Invalid number. Please enter a valid integer.");
             }
             break;
-        case "9":
+        case 10:
             Console.Write($"Enter block index to tamper with (0-{blockChainService.Chain.Count - 1}): ");
             if (!int.TryParse(Console.ReadLine(), out int blockIndex))
             {
@@ -129,27 +165,26 @@ while (true)
                 var forgedTransaction = new Transaction(
                     forgedSender,
                     forgedRecipient,
-                    forgedAmount);
+                    forgedAmount,
+                    0);
 
                 await tamperingService.HackChain(
                     blockChainService,
                     blockIndex,
                     forgedTransaction);
 
-                BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValid());
+                BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValidChain(blockChainService.Chain));
             }
             catch (ArgumentException exception)
             {
                 Console.WriteLine(exception.Message);
             }
             break;
-        case "10":
+        case 11:
             Console.WriteLine("Total blockchain supply: " + blockChainService.GetTotalSupply());
             break;
-        case "11":
-            blockChainService.Chain[1].Transactions.First().Amount = 9999;
-            break;
-        case "12":
+        case 12:
+            blockChainService.SaveChain();
             return;
         default:
             Console.WriteLine("Invalid option. Please try again.");

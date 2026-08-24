@@ -9,8 +9,8 @@ var hashingService = new HashingService();
 var miningService = new MiningService(hashingService);
 var walletService = new WalletService();
 var transactionService = new TransactionService(walletService);
-var blockChainService = new BlockChainService(hashingService, miningService, transactionService);
 var tamperingService = new BlockchainTamperingService(miningService);
+var blockChainService = new BlockChainService(hashingService, miningService, transactionService);
 
 
 // tmp code for the example of working blockchain

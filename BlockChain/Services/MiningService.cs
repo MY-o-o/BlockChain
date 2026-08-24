@@ -33,9 +33,10 @@ public sealed class MiningService
     public (double hashRate, char measureUnit, string timeTaken, long nonce) MineBlock(
         Block block,
         int difficulty,
-        bool showProgress = true)
+        bool showProgress = true,
+        ConsoleKey cancelKey = ConsoleKey.None)
     {
-        return MineBlockAsync(block, difficulty, showProgress).GetAwaiter().GetResult();
+        return MineBlockAsync(block, difficulty, showProgress, cancelKey: cancelKey).GetAwaiter().GetResult();
     }
 
     public async Task<(double hashRate, char measureUnit, string timeTaken, long nonce)> MineBlockAsync(

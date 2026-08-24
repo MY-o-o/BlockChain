@@ -1,5 +1,4 @@
 ﻿using BlockChain.Models;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace BlockChain.Services
@@ -31,7 +30,7 @@ namespace BlockChain.Services
         {
             var genesisBlock = new Block(0, [], "Genesis Block", Difficulty);
 
-            _miningService.MineBlock(genesisBlock, Difficulty, showProgress: false);
+            _miningService.MineBlock(genesisBlock, Difficulty, showProgress: false, cancelKey: ConsoleKey.None);
             Chain.Add(genesisBlock);
         }
 

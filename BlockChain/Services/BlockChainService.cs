@@ -29,14 +29,19 @@ namespace BlockChain.Services
 
         private void CreateGenesisBlock()
         {
-            var genesisBlock = new Block(0, new List<Transaction>(), "Genesis Block", Difficulty);
+            var genesisBlock = new Block(0, [], "Genesis Block", Difficulty);
 
             _miningService.MineBlock(genesisBlock, Difficulty, showProgress: false);
             Chain.Add(genesisBlock);
         }
 
-        public void MinePendingTransactions(string minerAddress, bool showProgress = true)
+        public async Task MinePendingTransactionsAsync(
+            string minerAddress,
+            bool showProgress = true,
+            CancellationToken cancellationToken = default)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(minerAddress);
+
             var transactionsCopy = PendingTransactions.OrderByDescending(t => t.Fee).Take(_maxBlockSize).ToList();
             var totalFees = transactionsCopy.Sum(t => t.Fee);
             var rewardTransaction = new Transaction("Coinbase", minerAddress, GetCurrentReward() + totalFees, 0);
@@ -45,8 +50,11 @@ namespace BlockChain.Services
             var lastBlock = Chain.Last();
             var newBlock = new Block(lastBlock.Index + 1, transactionsCopy, lastBlock.Hash, Difficulty);
 
-            //TODO: Insert a varible newBlock as a ref newBlock
-            _miningService.MineBlock(newBlock, Difficulty, showProgress);
+            await _miningService.MineBlockAsync(
+                newBlock,
+                Difficulty,
+                showProgress,
+                cancellationToken: cancellationToken);
             Chain.Add(newBlock);
 
             foreach (var transaction in transactionsCopy)

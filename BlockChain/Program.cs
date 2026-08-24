@@ -26,11 +26,9 @@ try
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"Error loading blockchain: {ex.Message}");
-    Console.WriteLine("Starting with a new blockchain.\n");
-    Console.Write("Press any key to continue...");
-    Console.ReadKey();
-    Console.Clear();
+    AnsiConsole.MarkupLineInterpolated($"[bold red]Error loading blockchain: {ex.Message}[/]");
+    AnsiConsole.MarkupLine("[bold yellow]Starting with a new blockchain.[/]\n");
+    await ContinueInput();
 }
 
 while (true)
@@ -43,7 +41,7 @@ while (true)
         ( 4, "Change difficulty ++" ),
         ( 5, "Change difficulty --" ),
         ( 6, "Display balance" ),
-        ( 7, "Transfer 100 coins from Alice to Bob" ),
+        ( 7, "Transfer coins from Alice to Bob" ),
         ( 8, "Display pending transactions" ),
         ( 9, "Test mining efficiency" ),
         ( 10, "Tamper with a block" ),
@@ -68,8 +66,16 @@ while (true)
     switch (selectedOption.Item1)
     {
         case 1:
-            blockChainService.MinePendingTransactions(aliceWallet.Address);
-            Console.WriteLine("Block added!");
+            try
+            {
+                await blockChainService.MinePendingTransactionsAsync(aliceWallet.Address);
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLineInterpolated($"[bold red]{ex.Message}[/]");
+                break;
+            }
+            AnsiConsole.MarkupLine("[bold green]Block added![/]");
             break;
         case 2:
             BlockChainDisplayService.DisplayBlockChain(blockChainService.Chain);
@@ -116,7 +122,7 @@ while (true)
         case 8:
             if (blockChainService.PendingTransactions.Count == 0)
             {
-                Console.WriteLine("No pending transactions.");
+                AnsiConsole.MarkupLine("[bold yellow]No pending transactions.[/]");
             }
             else
             {
@@ -133,7 +139,7 @@ while (true)
                     break;
                 }
 
-                miningService.TestMiningEfficiency(maxDifficulty);
+                await miningService.TestMiningEfficiencyAsync(maxDifficulty);
             }
             else
             {
@@ -191,7 +197,50 @@ while (true)
             break;
     }
 
-    Console.Write("Press any key to continue...");
-    Console.ReadKey();
-    Console.Clear();
+    await ContinueInput();
 }
+
+static async Task ContinueInput(string message = "Press any key to continue", Style? style = null, int delayMs = 800)
+{
+    style ??= new Style(foreground: Color.Gray, decoration: Decoration.Bold);
+    short dotCounter = 1;
+    var cts = new CancellationTokenSource();
+    CancellationToken token = cts.Token;
+
+    Console.Write(Environment.NewLine);
+    Task dotTask = AnsiConsole.Live(new Markup(message, style))
+        .StartAsync(async ctx =>
+        {
+            while (true)
+            {
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+                    ctx.UpdateTarget(new Markup(message + new string('.', dotCounter), style));
+
+                    dotCounter = (short)((dotCounter + 1) % 4);
+                    await Task.Delay(delayMs, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        });
+
+    await Task.Run(() => {
+        Console.ReadKey(intercept: true);
+        cts.Cancel();
+    });
+
+    try
+    {
+        await dotTask;
+    }
+    catch (Exception ex)
+    {
+        AnsiConsole.MarkupLineInterpolated($"[red][bold]Error:[/] {ex.Message}[/]");
+    }
+
+    AnsiConsole.Clear();
+}  

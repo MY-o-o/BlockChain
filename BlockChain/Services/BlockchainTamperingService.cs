@@ -178,7 +178,7 @@ public sealed class BlockchainTamperingService
                         block.Index,
                         snapshot,
                         totalStopwatch.Elapsed),
-                    cancellationToken);
+                    cancellationToken: cancellationToken);
             blockStopwatch.Stop();
 
             progress?.CompleteBlock(

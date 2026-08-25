@@ -1,19 +1,21 @@
 using BlockChain.Models;
 using BlockChain.Services;
 using Spectre.Console;
+using System.Net.NetworkInformation;
 using System.Text;
+
+//TODO: Implement DI
 
 Console.OutputEncoding = Encoding.UTF8;
 
-var hashingService = new HashingService();
-var miningService = new MiningService(hashingService);
 var walletService = new WalletService();
+var miningService = new MiningService();
 var transactionService = new TransactionService(walletService);
 var tamperingService = new BlockchainTamperingService(miningService);
-var blockChainService = new BlockChainService(hashingService, miningService, transactionService);
+var blockChainService = new BlockChainService(miningService, transactionService);
 
 
-// tmp code for the example of working blockchain
+// tmp code
 
 var aliceWallet = walletService.CreateWallet("Alice");
 var bobWallet = walletService.CreateWallet("Bob");
@@ -26,8 +28,8 @@ try
 }
 catch (Exception ex)
 {
-    AnsiConsole.MarkupLineInterpolated($"[bold red]Error loading blockchain: {ex.Message}[/]");
-    AnsiConsole.MarkupLine("[bold yellow]Starting with a new blockchain.[/]\n");
+    ErrorPrint(ex.Message, "Error loading blockchain");
+    WarningPrint("Starting with a new blockchain.");
     await ContinueInput();
 }
 
@@ -68,14 +70,13 @@ while (true)
         case 1:
             try
             {
-                await blockChainService.MinePendingTransactionsAsync(aliceWallet.Address);
+                var result = await blockChainService.MinePendingTransactionsAsync(aliceWallet.Address);
+                MiningService.DisplayMiningResult(result);
             }
             catch (Exception ex)
             {
-                AnsiConsole.MarkupLineInterpolated($"[bold red]{ex.Message}[/]");
-                break;
+                ErrorPrint(ex.Message);
             }
-            AnsiConsole.MarkupLine("[bold green]Block added![/]");
             break;
         case 2:
             BlockChainDisplayService.DisplayBlockChain(blockChainService.Chain);
@@ -84,45 +85,49 @@ while (true)
             BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValidChain(blockChainService.Chain));
             break;
         case 4:
+            //TODO: Implement a more sophisticated difficulty adjustment mechanism based on mining time and other factors
             blockChainService.Difficulty++;
-            Console.WriteLine($"Difficulty increased to {blockChainService.Difficulty}");
+            InfoPrint($"Difficulty increased to {blockChainService.Difficulty}");
             break;
         case 5:
             if (blockChainService.Difficulty > 1)
             {
                 blockChainService.Difficulty--;
-                Console.WriteLine($"Difficulty decreased to {blockChainService.Difficulty}");
+                InfoPrint($"Difficulty decreased to {blockChainService.Difficulty}");
             }
-            else
-            {
-                Console.WriteLine("Difficulty cannot be less than 1.");
-            }
+            else ErrorPrint("Difficulty cannot be less than 1.");
             break;
         case 6:
-            Console.WriteLine($"Your balance: {blockChainService.GetWalletBalance(aliceWallet.Address)}");
+            CustomPrint(blockChainService.GetWalletBalance(aliceWallet.Address) + " coins", "Your balance", Color.Gold1);
             break;
         case 7:
-            //TODO: Implement customisable transaction creation with user input for recipient(?), fee and amount
             try
             {
-                Console.Write("Enter amount to transfer from Alice to Bob: ");
-                var amountToTransfer = decimal.Parse(Console.ReadLine(), System.Globalization.CultureInfo.InvariantCulture);
-                Console.Write("Enter transaction fee: ");
-                var transactionFee = decimal.Parse(Console.ReadLine(), System.Globalization.CultureInfo.InvariantCulture);
+                var amountPrompt = new TextPrompt<decimal>("[orange1 bold]Enter amount to transfer from Alice to Bob:[/]")
+                    .Validate(input => input > 0, "[red][bold]Error:[/] Amount must be a positive number.[/]")
+                    .ClearOnFinish();
+                var amountToTransfer = AnsiConsole.Prompt(amountPrompt);
+
+                var feePrompt = new TextPrompt<decimal>("[orange1 bold]Enter transaction fee:[/]")
+                    .DefaultValue(1.0m)
+                    .ShowDefaultValue()
+                    .Validate(input => input > 0, "[red][bold]Error:[/] Fee must be a positive number.[/]")
+                    .ClearOnFinish();
+                var transactionFee = AnsiConsole.Prompt(feePrompt);
 
                 var newTransaction = transactionService.CreateTransaction(aliceWallet.Address, bobWallet.Address, amountToTransfer, transactionFee, aliceWallet);
                 blockChainService.AddTransaction(newTransaction);
-                Console.WriteLine("Transaction added.");
-            }
+                SuccessPrint("Transaction added.");
+            } 
             catch (InvalidOperationException ex)
             {
-                Console.WriteLine($"Error: {ex.Message}");
+                ErrorPrint(ex.Message);
             }
             break;
         case 8:
             if (blockChainService.PendingTransactions.Count == 0)
             {
-                AnsiConsole.MarkupLine("[bold yellow]No pending transactions.[/]");
+                InfoPrint("No pending transactions.");
             }
             else
             {
@@ -130,27 +135,30 @@ while (true)
             }
             break;
         case 9:
-            Console.Write("Enter the max difficulty: ");
-            if (short.TryParse(Console.ReadLine(), out short maxDifficulty))
-            {
-                if (maxDifficulty <= 0)
-                {
-                    Console.WriteLine("Max difficulty must be greater than zero.");
-                    break;
-                }
+            var difficultyPrompt = new TextPrompt<int>("[orange1 bold]Enter max difficulty:[/]")
+                    .DefaultValue(7)
+                    .ShowDefaultValue()
+                    .Validate(input => input > 0, "[red][bold]Error:[/] Difficulty must be a positive integer.[/]")
+                    .ClearOnFinish();
+            var maxDifficulty = AnsiConsole.Prompt(difficultyPrompt);
 
+            try
+            {
                 await miningService.TestMiningEfficiencyAsync(maxDifficulty);
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine("Invalid number. Please enter a valid integer.");
+                AnsiConsole.Clear();
+                ErrorPrint(ex.Message);
             }
+
             break;
         case 10:
+            //TODO: Implement a better UI/UX input and upgrade the tampering service
             Console.Write($"Enter block index to tamper with (0-{blockChainService.Chain.Count - 1}): ");
             if (!int.TryParse(Console.ReadLine(), out int blockIndex))
             {
-                Console.WriteLine("Invalid block index.");
+                ErrorPrint("Invalid block index.");
                 break;
             }
 
@@ -162,7 +170,7 @@ while (true)
 
             if (!decimal.TryParse(Console.ReadLine(), out decimal forgedAmount))
             {
-                Console.WriteLine("Invalid amount.");
+                ErrorPrint("Invalid amount.");
                 break;
             }
 
@@ -172,7 +180,7 @@ while (true)
                     forgedSender,
                     forgedRecipient,
                     forgedAmount,
-                    0);
+                    10);
 
                 await tamperingService.HackChain(
                     blockChainService,
@@ -183,17 +191,17 @@ while (true)
             }
             catch (ArgumentException exception)
             {
-                Console.WriteLine(exception.Message);
+                ErrorPrint(exception.Message);
             }
             break;
         case 11:
-            Console.WriteLine("Total blockchain supply: " + blockChainService.GetTotalSupply());
+            CustomPrint(blockChainService.GetTotalSupply() + " coins", "Total blockchain supply", Color.Gold1);
             break;
         case 12:
             blockChainService.SaveChain();
             return;
         default:
-            Console.WriteLine("Invalid option. Please try again.");
+            ErrorPrint("Invalid option. Please try again.");
             break;
     }
 
@@ -239,8 +247,30 @@ static async Task ContinueInput(string message = "Press any key to continue", St
     }
     catch (Exception ex)
     {
-        AnsiConsole.MarkupLineInterpolated($"[red][bold]Error:[/] {ex.Message}[/]");
+        ErrorPrint(ex.Message);
     }
 
     AnsiConsole.Clear();
 }  
+
+static void CustomPrint(string message, string caption = "", Color? color = null)
+{
+    color ??= Color.Gray;
+    
+    int horizontalAlignment = 0;
+    if (caption.Length > message.Length)
+    {
+        horizontalAlignment = (caption.Length - message.Length) / 2;
+    }
+
+    var panel = new Panel($"[bold {color.Value}]{message}[/]")
+        .Header($"[{color.Value}]{caption}[/]")
+        .BorderColor(color ?? Color.Gray)
+        .Border(BoxBorder.Rounded)
+        .Padding(2 + horizontalAlignment, 0);
+    AnsiConsole.Write(panel);
+}
+static void ErrorPrint(string message, string caption = "Error") => CustomPrint(message, caption, Color.Red);
+static void SuccessPrint(string message, string caption = "Success") => CustomPrint(message, caption, Color.Green);
+static void WarningPrint(string message, string caption = "Warning") => CustomPrint(message, caption, Color.Yellow);
+static void InfoPrint(string message, string caption = "Info") => CustomPrint(message, caption, Color.SteelBlue1_1);

@@ -168,7 +168,7 @@ public sealed class BlockchainTamperingService
             progress?.StartBlock(position, block.Index, totalStopwatch.Elapsed);
 
             var blockStopwatch = Stopwatch.StartNew();
-            var (hashRate, measureUnit, timeTaken, winningNonce) =
+            var (hashRate, measureUnitIndex, timeTaken, winningNonce, _) =
                 await _miningService.MineBlockAsync(
                     block,
                     block.Difficulty,
@@ -186,7 +186,7 @@ public sealed class BlockchainTamperingService
                 block.Index,
                 winningNonce,
                 hashRate,
-                measureUnit,
+                MiningService.MeasureUnits[measureUnitIndex],
                 timeTaken,
                 totalStopwatch.Elapsed);
         }

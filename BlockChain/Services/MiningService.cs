@@ -14,23 +14,24 @@ public readonly record struct MiningProgressSnapshot(
     TimeSpan Elapsed,
     string FormattedElapsed);
 
+public readonly record struct MiningResult(
+        double HashRate,
+        short MeasureUnitIndex,
+        string TimeTaken,
+        long Nonce,
+        long Attempts);
+
 public sealed class MiningService
 {
-    private readonly HashingService _hashingService;
     private readonly Lock _miningLock = new();
     private CancellationTokenSource? _activeMiningCancellation;
-    private static readonly char[] _measureUnits = [' ', 'k', 'M', 'G', 'T', 'P', 'E'];
+    public static readonly char[] MeasureUnits = [' ', 'k', 'M', 'G', 'T', 'P', 'E'];
     private const long _nonceRangeSize = 50_000;
     private const long _statisticsBatchSize = 50_000;
     private const int _statisticsIntervalMilliseconds = 100;
     private const int _maximumDifficulty = 64;
 
-    public MiningService(HashingService hashingService)
-    {
-        _hashingService = hashingService;
-    }
-
-    public (double hashRate, char measureUnit, string timeTaken, long nonce) MineBlock(
+    public MiningResult MineBlock(
         Block block,
         int difficulty,
         bool showProgress = true,
@@ -39,18 +40,17 @@ public sealed class MiningService
         return MineBlockAsync(block, difficulty, showProgress, cancelKey: cancelKey).GetAwaiter().GetResult();
     }
 
-    public async Task<(double hashRate, char measureUnit, string timeTaken, long nonce)> MineBlockAsync(
+    public async Task<MiningResult> MineBlockAsync(
         Block block,
         int difficulty,
         bool showProgress = true,
         Action<MiningProgressSnapshot>? reportProgress = null,
-        ConsoleKey cancelKey = ConsoleKey.C,
+        ConsoleKey cancelKey = ConsoleKey.Escape,
         CancellationToken cancellationToken = default)
     {
         ValidateMiningArguments(block, difficulty);
 
-        using var miningCancellation =
-            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var miningCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         RegisterActiveMining(miningCancellation);
 
         using var keyListenerCancellation = new CancellationTokenSource();
@@ -59,22 +59,11 @@ public sealed class MiningService
             ? MineWithProgressAsync(block, difficulty, reportProgress, cancelKey, miningCancellation.Token)
             : MineCoreAsync(block, difficulty, reportProgress, miningCancellation.Token);
 
-        Task keyListenerTask = ListenForCancelKeyAsync(cancelKey, miningCancellation, keyListenerCancellation.Token, miningTask);
+        Task keyListenerTask = ListenForCancelKeyAsync(cancelKey, miningTask, miningCancellation, keyListenerCancellation.Token);
 
         try
         {
-            MiningResult result = await miningTask;
-
-            if (showProgress)
-            {
-                WriteMiningResult(result);
-            }
-
-            return (
-                result.HashRate,
-                _measureUnits[result.MeasureUnitIndex],
-                result.TimeTaken,
-                result.Nonce);
+            return await miningTask;
         }
         finally
         {
@@ -94,9 +83,9 @@ public sealed class MiningService
 
     private static async Task ListenForCancelKeyAsync(
         ConsoleKey cancelKey,
+        Task miningTask,
         CancellationTokenSource miningCancellation,
-        CancellationToken listenerCancellation,
-        Task miningTask)
+        CancellationToken listenerCancellation)
     {
         if (Console.IsInputRedirected)
         {
@@ -122,7 +111,7 @@ public sealed class MiningService
         }
     }
 
-    private async Task<MiningResult> MineWithProgressAsync(
+    private static async Task<MiningResult> MineWithProgressAsync(
         Block block,
         int difficulty,
         Action<MiningProgressSnapshot>? externalProgress,
@@ -218,7 +207,7 @@ public sealed class MiningService
         return result;
     }
 
-    private async Task<MiningResult> MineCoreAsync(
+    private static async Task<MiningResult> MineCoreAsync(
         Block block,
         int difficulty,
         Action<MiningProgressSnapshot>? reportProgress,
@@ -227,7 +216,7 @@ public sealed class MiningService
         block.Difficulty = difficulty;
 
         string targetPrefix = new('0', difficulty);
-        string blockPrefix = CreateBlockPrefix(block);
+        string blockPrefix = block.ToRowString(includeNonce: false);
 
         long attempts = 0;
         long currentNonce = 0;
@@ -271,7 +260,7 @@ public sealed class MiningService
                                     return;
                                 }
 
-                                string hash = _hashingService.ComputeHash(blockPrefix + nonce);
+                                string hash = HashingService.ComputeHash(blockPrefix + nonce);
                                 localAttempts++;
                                 latestLocalNonce = nonce;
 
@@ -340,7 +329,7 @@ public sealed class MiningService
             Interlocked.Read(ref attempts),
             winningNonce,
             hashRate,
-            _measureUnits[measureUnitIndex],
+            MeasureUnits[measureUnitIndex],
             stopwatch.Elapsed,
             timeTaken));
 
@@ -416,7 +405,7 @@ public sealed class MiningService
                 attempts,
                 getCurrentNonce(),
                 hashRate,
-                _measureUnits[measureUnitIndex],
+                MeasureUnits[measureUnitIndex],
                 stopwatch.Elapsed,
                 timeTaken));
 
@@ -429,12 +418,6 @@ public sealed class MiningService
         ArgumentNullException.ThrowIfNull(block);
         ArgumentOutOfRangeException.ThrowIfNegative(difficulty);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(difficulty, _maximumDifficulty);
-    }
-
-    private static string CreateBlockPrefix(Block block)
-    {
-        string transactionsRow = string.Concat(block.Transactions.Select(t => t.ToRowString()));
-        return $"{block.Index}{block.TimeStamp:o}{transactionsRow}{block.PrevHash}{block.Difficulty}";
     }
 
     internal static string FormatElapsed(TimeSpan elapsed)
@@ -455,7 +438,7 @@ public sealed class MiningService
         short measureUnitIndex = 0;
         double hashRate = attempts / Math.Max(elapsed.TotalSeconds, double.Epsilon);
 
-        while (hashRate >= 1000 && measureUnitIndex < _measureUnits.Length - 1)
+        while (hashRate >= 1000 && measureUnitIndex < MeasureUnits.Length - 1)
         {
             hashRate /= 1000;
             measureUnitIndex++;
@@ -464,25 +447,25 @@ public sealed class MiningService
         return (hashRate, measureUnitIndex, FormatElapsed(elapsed));
     }
 
-    private static void WriteMiningResult(MiningResult result)
+    public static void DisplayMiningResult(MiningResult result)
     {
-        Console.WriteLine(
-            $"Average hashrate: {result.HashRate:F2} {_measureUnits[result.MeasureUnitIndex]}H/s, " +
-            $"Nonce: {result.Nonce}, Attempts: {result.Attempts:N0}, Time taken: {result.TimeTaken}");
+        string message = $"[bold]Average Hash Rate:[/] [green]{result.HashRate:F2} {MeasureUnits[result.MeasureUnitIndex]}H/s[/], " +
+                         $"[bold]Nonce:[/] {result.Nonce}\n" +
+                         $"[bold]Attempts:[/] {result.Attempts:N0}, " +
+                         $"[bold]Time Taken:[/] [cyan]{result.TimeTaken}[/]";
+        var panel = new Panel(message)
+            .Header("[green]Mining completed![/]")
+            .BorderColor(Color.Green4)
+            .Border(BoxBorder.Rounded)
+            .Padding(2 , 0);
+        AnsiConsole.Write(panel);
     }
 
-    private readonly record struct MiningResult(
-        double HashRate,
-        short MeasureUnitIndex,
-        string TimeTaken,
-        long Nonce,
-        long Attempts);
-
-    public async Task TestMiningEfficiencyAsync(short maxDifficulty)
+    public async Task TestMiningEfficiencyAsync(int maxDifficulty, ConsoleKey cancelKey = ConsoleKey.Escape)
     {
         Table efficiencyTable = new Table()
             .Title("Mining Efficiency Test", new Style(foreground: Color.Orange1))
-            .Caption("Waiting for mining to complete...", new Style(foreground: Color.Gray, decoration: Decoration.Dim))
+            .Caption($"Press ({cancelKey}) to cancel", new Style(foreground: Color.Gray, decoration: Decoration.Dim))
             .Border(TableBorder.Rounded)
             .BorderColor(Color.Orange3)
             .AddColumn(new TableColumn("[b]Status[/]").Centered())
@@ -491,7 +474,7 @@ public sealed class MiningService
             .AddColumn(new TableColumn("[b]Avg Hash Rate[/]").Centered())
             .AddColumn(new TableColumn("[b]Time Taken[/]").Centered());
 
-        for (short i = 1; i <= maxDifficulty; i++)
+        for (int i = 1; i <= maxDifficulty; i++)
         {
             efficiencyTable.AddRow("[red]Waiting...[/]", i.ToString(), "[dim]-[/]", "[dim]-[/]", "[dim]-[/]");
         }
@@ -504,12 +487,12 @@ public sealed class MiningService
                     efficiencyTable.UpdateCell(i - 1, 0, "[yellow]Mining...[/]");
                     ctx.Refresh();
 
-                    var (hashRate, measureUnit, timeTaken, winningNonce) =
-                        await MineBlockAsync(new Block(-1, [], "Test Block", i), i, false);
+                    var (hashRate, measureUnitIndex, timeTaken, winningNonce, _) =
+                        await MineBlockAsync(new Block(-1, [], "Test Block", i), i, false, cancelKey: cancelKey);
 
                     efficiencyTable.UpdateCell(i - 1, 0, "[green]Completed![/]");
                     efficiencyTable.UpdateCell(i - 1, 2, $"{winningNonce:N0}");
-                    efficiencyTable.UpdateCell(i - 1, 3, $"{hashRate:F2} {measureUnit}H/s");
+                    efficiencyTable.UpdateCell(i - 1, 3, $"{hashRate:F2} {MeasureUnits[measureUnitIndex]}H/s");
                     efficiencyTable.UpdateCell(i - 1, 4, timeTaken);
                     ctx.Refresh();
                 }

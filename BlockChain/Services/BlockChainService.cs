@@ -5,22 +5,20 @@ namespace BlockChain.Services
 {
     public class BlockChainService
     {
-        private readonly HashingService _hashingService;
         private readonly MiningService _miningService;
         private readonly TransactionService _transactionService;
         public List<Block> Chain { get; set; } = [];
         public List<Transaction> PendingTransactions { get; set; } = [];
         public int Difficulty { get; set; } = 5;
-        private readonly int _targetTimePerBlock = 2000; // Target time per block in milliseconds
-        private readonly int _adjustmentInterval = 2; // Number of blocks after which to adjust difficulty
-        private readonly decimal _rewardAmount = 50; // Reward amount for mining a block
-        private readonly int _maxBlockSize = 2; // Maximum number of transactions per block
-        private readonly int _halvingInterval = 3; // Number of blocks after which the reward is halved
-        private readonly string _chainFilePath = "blockchain.json";
+        private const int _targetTimePerBlock = 2000; // Target time per block in milliseconds
+        private const int _adjustmentInterval = 2; // Number of blocks after which to adjust difficulty
+        private const decimal _rewardAmount = 50; // Reward amount for mining a block
+        private const int _maxTransactionAmountPerBlock = 3; // Maximum number of transactions per block
+        private const int _halvingInterval = 10; // Number of blocks after which the reward is halved
+        private const string _chainFilePath = "blockchain.json";
 
-        public BlockChainService(HashingService hashingService, MiningService miningService, TransactionService transactionService)
+        public BlockChainService(MiningService miningService, TransactionService transactionService)
         {
-            _hashingService = hashingService;
             _miningService = miningService;
             _transactionService = transactionService;
             CreateGenesisBlock();
@@ -34,14 +32,14 @@ namespace BlockChain.Services
             Chain.Add(genesisBlock);
         }
 
-        public async Task MinePendingTransactionsAsync(
+        public async Task<MiningResult> MinePendingTransactionsAsync(
             string minerAddress,
             bool showProgress = true,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(minerAddress);
 
-            var transactionsCopy = PendingTransactions.OrderByDescending(t => t.Fee).Take(_maxBlockSize).ToList();
+            var transactionsCopy = PendingTransactions.OrderByDescending(t => t.Fee).Take(_maxTransactionAmountPerBlock).ToList();
             var totalFees = transactionsCopy.Sum(t => t.Fee);
             var rewardTransaction = new Transaction("Coinbase", minerAddress, GetCurrentReward() + totalFees, 0);
             transactionsCopy.Insert(0, rewardTransaction);
@@ -49,7 +47,7 @@ namespace BlockChain.Services
             var lastBlock = Chain.Last();
             var newBlock = new Block(lastBlock.Index + 1, transactionsCopy, lastBlock.Hash, Difficulty);
 
-            await _miningService.MineBlockAsync(
+            var result = await _miningService.MineBlockAsync(
                 newBlock,
                 Difficulty,
                 showProgress,
@@ -65,6 +63,8 @@ namespace BlockChain.Services
             {
                 AdjustDifficulty();
             }
+
+            return result;
         }
 
         public void AddTransaction(Transaction newTransaction)
@@ -112,7 +112,7 @@ namespace BlockChain.Services
                 decimal expectedReward = _rewardAmount / (decimal)Math.Pow(2, pastHalvings);
                 expectedReward += chain[i].Transactions.Sum(t => t.From == "Coinbase" ? 0 : t.Fee);
 
-                if (currentBlock.Hash != _hashingService.ComputeHash(currentBlock)) return false;
+                if (currentBlock.Hash != HashingService.ComputeHash(currentBlock)) return false;
                 if (currentBlock.PrevHash != previousBlock.Hash) return false;
                 if (!currentBlock.Hash.StartsWith(new string('0', currentBlock.Difficulty))) return false;
 

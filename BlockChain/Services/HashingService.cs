@@ -3,14 +3,14 @@ using System.Text;
 
 namespace BlockChain.Services
 {
-    public class HashingService
+    public static class HashingService
     {
-        public string ComputeHash(Block block)
+        public static string ComputeHash(Block block)
         {
             return ComputeHash(block.ToRowString());
         }
 
-        public string ComputeHash(string input)
+        public static string ComputeHash(string input)
         {
             var inputBytes = Encoding.UTF8.GetBytes(input);
             var hashBytes = System.Security.Cryptography.SHA256.HashData(inputBytes);

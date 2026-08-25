@@ -67,6 +67,26 @@ public static class BlockChainDisplayService
         AnsiConsole.Write(status.Border(BoxBorder.Rounded).Padding(1, 0));
     }
 
+    public static void DisplayBlockchainSpecs(BlockChainService blockChainService)
+    {
+        ArgumentNullException.ThrowIfNull(blockChainService);
+        var specsTable = new Table()
+            .Border(TableBorder.None)
+            .HideHeaders()
+            .AddColumn(new TableColumn("Property").Width(16))
+            .AddColumn(new TableColumn("Value"));
+        AddProperty(specsTable, "Listen port", blockChainService.NodeListenPort.ToString());
+        AddProperty(specsTable, "Send port", blockChainService.NodeSendPort.ToString());
+        AddProperty(specsTable, "Amount of blocks", blockChainService.Chain.Count.ToString());
+        AddProperty(specsTable, "Transactions in mempool", blockChainService.PendingTransactions.Count.ToString());
+        AnsiConsole.Write(
+            new Panel(specsTable)
+                .Header("[bold]Blockchain Specifications[/]")
+                .Border(BoxBorder.Rounded)
+                .BorderColor(Color.SteelBlue1)
+                .Padding(1, 0));
+    }
+
     private static Table CreateBlockTable(Block block)
     {
         var table = new Table()

@@ -1,44 +1,27 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Text;
 
 namespace BlockChain.Models
 {
-    public class Transaction : ICloneable
+    public class Transaction(string from, string to, decimal amount, decimal fee) : ICloneable
     {
-        public Guid Id { get; set; }
-        public string From { get; set; }
-        public string To { get; set; }
-        public decimal Amount { get; set; }
-        public decimal Fee { get; set; }
-        public DateTime TimeStamp { get; set; }
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public string From { get; set; } = from;
+        public string To { get; set; } = to;
+        public decimal Amount { get; set; } = amount;
+        public decimal Fee { get; set; } = fee;
+        public DateTime TimeStamp { get; set; } = DateTime.UtcNow;
         public byte[] Signature { get; set; } = [];
-
-        public Transaction(string from, string to, decimal amount, decimal fee)
-        {
-            Id = Guid.NewGuid();
-            From = from;
-            To = to;
-            Amount = amount;
-            Fee = fee;
-            TimeStamp = DateTime.UtcNow;
-        }
 
         public Transaction() : this(string.Empty, string.Empty, 0, 0) { }
 
-        public string ToRowString()
+        public string ToRowString(bool isSigned = true)
         {
-            return $"{Id}{From}{To}{Amount}{Fee}{TimeStamp}";
+            return $"{Id}{From}{To}{Amount}{Fee}{TimeStamp}{(isSigned ? Convert.ToBase64String(Signature) : string.Empty)}";
         }
 
         public byte[] GetDataToSign()
         {
             return Encoding.UTF8.GetBytes(ToRowString());
-        }
-
-        public override string ToString()
-        {
-            return $"Transaction ID: {Id}\nFrom: {From}\nTo: {To}\nAmount: {Amount}\nFee: {Fee}\nTimeStamp: {TimeStamp:o}";
         }
 
         public object Clone()

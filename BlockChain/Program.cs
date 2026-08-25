@@ -1,7 +1,6 @@
 using BlockChain.Models;
 using BlockChain.Services;
 using Spectre.Console;
-using System.Net.NetworkInformation;
 using System.Text;
 
 //TODO: Implement DI
@@ -30,7 +29,7 @@ catch (Exception ex)
 {
     ErrorPrint(ex.Message, "Error loading blockchain");
     WarningPrint("Starting with a new blockchain.");
-    await ContinueInput();
+    await AwaitingInput();
 }
 
 while (true)
@@ -48,7 +47,11 @@ while (true)
         ( 9, "Test mining efficiency" ),
         ( 10, "Tamper with a block" ),
         ( 11, "Display total blockchain supply" ),
-        ( 12, "Exit" )
+        ( 12, "Wait for incoming block from network" ),
+        ( 13, "Send last block to network" ),
+        ( 14, "Display node specs" ),
+        ( 15, "Change node ports"),
+        ( 16, "Exit" )
     };
 
     var prompt = new SelectionPrompt<(short, string)>()
@@ -115,6 +118,8 @@ while (true)
                     .ClearOnFinish();
                 var transactionFee = AnsiConsole.Prompt(feePrompt);
 
+                //TODO:Add Confirmation
+
                 var newTransaction = transactionService.CreateTransaction(aliceWallet.Address, bobWallet.Address, amountToTransfer, transactionFee, aliceWallet);
                 blockChainService.AddTransaction(newTransaction);
                 SuccessPrint("Transaction added.");
@@ -180,7 +185,7 @@ while (true)
                     forgedSender,
                     forgedRecipient,
                     forgedAmount,
-                    10);
+                    0);
 
                 await tamperingService.HackChain(
                     blockChainService,
@@ -198,6 +203,89 @@ while (true)
             CustomPrint(blockChainService.GetTotalSupply() + " coins", "Total blockchain supply", Color.Gold1);
             break;
         case 12:
+            try
+            {
+                //var cancelKey = ConsoleKey.Escape;
+                var cts = new CancellationTokenSource();
+                var token = cts.Token;
+                var awaitingTask = AwaitingInput(
+                    $"Waiting for incoming block from network on port {blockChainService.NodeListenPort}",
+                    //$"\n[dim gray]Press [bold]{cancelKey}[/] to cancel[/]",
+                    new Style(Color.SteelBlue1_1), isInPanel: true, isCancelable: false, cts: cts);
+
+                //var listenerTask = Task.Run( async () =>
+                //{
+                //    if (Console.IsInputRedirected) return;
+                //    while (cts.IsCancellationRequested)
+                //    {
+                //        if (Console.KeyAvailable && Console.ReadKey(intercept: true).Key == cancelKey)
+                //        {
+                //            cts.Cancel();
+                //            return;
+                //        }
+
+                //        await Task.Delay(100, token);
+                //    }
+                //});
+
+                var receivedBlock = await BlockNetworkService.ReceiveBlockAsync(blockChainService.NodeListenPort, token);
+                var (accepted, errorMessage) = blockChainService.TryAddBlockFromNet(receivedBlock);
+
+                cts.Cancel();
+                //await listenerTask;
+                await awaitingTask;
+
+                AnsiConsole.Clear();
+                if (accepted)
+                {
+                    SuccessPrint("Received block accepted and added to the blockchain.");
+                }
+                else
+                {
+                    ErrorPrint(errorMessage, "Received block rejected");
+                }
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.Clear();
+                ErrorPrint(ex.Message, "Error receiving block");
+            }
+            break;
+        case 13:
+            try
+            {
+                var lastBlock = blockChainService.Chain.Last();
+                await BlockNetworkService.SendBlockAsync(lastBlock, "127.0.0.1", blockChainService.NodeListenPort); //fix ports
+                SuccessPrint("Last block sent to network.");
+            }
+            catch (Exception ex)
+            {
+                ErrorPrint(ex.Message, "Error sending block");
+            }
+            break;
+        case 14:
+            BlockChainDisplayService.DisplayBlockchainSpecs(blockChainService);
+            break;
+        case 15:
+            var listenPortPrompt = new TextPrompt<int>("[orange1 bold]Enter listen port:[/]")
+                    .DefaultValue(blockChainService.NodeListenPort)
+                    .ShowDefaultValue()
+                    .Validate(input => input > 0, "[red][bold]Error:[/] Port must be a positive number.[/]")
+                    .ClearOnFinish();
+            var listenPort = AnsiConsole.Prompt(listenPortPrompt);
+
+            var sendPortPrompt = new TextPrompt<int>("[orange1 bold]Enter send port:[/]")
+                    .DefaultValue(blockChainService.NodeSendPort)
+                    .ShowDefaultValue()
+                    .Validate(input => input > 0, "[red][bold]Error:[/] Port must be a positive number.[/]")
+                    .ClearOnFinish();
+            var sendPort = AnsiConsole.Prompt(sendPortPrompt);
+
+            //TODO:Add Confirmation
+
+            SuccessPrint("Ports were changed");
+            break;
+        case 16:
             blockChainService.SaveChain();
             return;
         default:
@@ -205,18 +293,31 @@ while (true)
             break;
     }
 
-    await ContinueInput();
+    await AwaitingInput();
 }
 
-static async Task ContinueInput(string message = "Press any key to continue", Style? style = null, int delayMs = 800)
+static async Task AwaitingInput(
+    string message = "Press any key to continue", 
+    Style? style = null, 
+    int delayMs = 800, 
+    bool isInPanel = false, 
+    bool isCancelable = true,
+    CancellationTokenSource? cts = null)
 {
     style ??= new Style(foreground: Color.Gray, decoration: Decoration.Bold);
-    short dotCounter = 1;
-    var cts = new CancellationTokenSource();
+    cts ??= new CancellationTokenSource();
     CancellationToken token = cts.Token;
+    short dotCounter = 1;
 
     Console.Write(Environment.NewLine);
-    Task dotTask = AnsiConsole.Live(new Markup(message, style))
+
+    var messageMarkup = new Markup(message, style);
+    var panel = new Panel(messageMarkup)
+        .BorderColor(style.Value.Foreground)
+        .Border(BoxBorder.Rounded)
+        .Padding(2, 0);
+
+    Task dotTask = AnsiConsole.Live(isInPanel ? panel : messageMarkup)
         .StartAsync(async ctx =>
         {
             while (true)
@@ -224,7 +325,12 @@ static async Task ContinueInput(string message = "Press any key to continue", St
                 try
                 {
                     token.ThrowIfCancellationRequested();
-                    ctx.UpdateTarget(new Markup(message + new string('.', dotCounter), style));
+                    var newMessageMarkup = new Markup(message + new string('.', dotCounter) + new string(' ', 3 - dotCounter), style);
+                    var newPanel = new Panel(newMessageMarkup)
+                        .BorderColor(style.Value.Foreground)
+                        .Border(BoxBorder.Rounded)
+                        .Padding(2, 0);
+                    ctx.UpdateTarget(isInPanel ? newPanel : newMessageMarkup);
 
                     dotCounter = (short)((dotCounter + 1) % 4);
                     await Task.Delay(delayMs, token);
@@ -236,10 +342,13 @@ static async Task ContinueInput(string message = "Press any key to continue", St
             }
         });
 
-    await Task.Run(() => {
-        Console.ReadKey(intercept: true);
-        cts.Cancel();
-    });
+    if (isCancelable)
+    {
+        await Task.Run(() => {
+            Console.ReadKey(intercept: true);
+            cts.Cancel();
+        });
+    }
 
     try
     {

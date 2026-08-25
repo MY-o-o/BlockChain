@@ -10,6 +10,8 @@ namespace BlockChain.Services
         public List<Block> Chain { get; set; } = [];
         public List<Transaction> PendingTransactions { get; set; } = [];
         public int Difficulty { get; set; } = 5;
+        public int NodeListenPort { get; set; } = 533;
+        public int NodeSendPort { get; set; } = 534;
         private const int _targetTimePerBlock = 2000; // Target time per block in milliseconds
         private const int _adjustmentInterval = 2; // Number of blocks after which to adjust difficulty
         private const decimal _rewardAmount = 50; // Reward amount for mining a block
@@ -26,7 +28,10 @@ namespace BlockChain.Services
 
         private void CreateGenesisBlock()
         {
-            var genesisBlock = new Block(0, [], "Genesis Block", Difficulty);
+            var genesisBlock = new Block(0, [], "Genesis Block", Difficulty)
+            {
+                TimeStamp = DateTime.UnixEpoch
+            };
 
             _miningService.MineBlock(genesisBlock, Difficulty, showProgress: false, cancelKey: ConsoleKey.None);
             Chain.Add(genesisBlock);
@@ -194,6 +199,55 @@ namespace BlockChain.Services
 
             Chain = loadedChain;
             Difficulty = Chain.Last().Difficulty;
+        }
+
+        public (bool accepted, string errorMessage) TryAddBlockFromNet(Block block)
+        {
+            var latestBlock = Chain.Last();
+
+            //1. Check if the new block's index is one greater than the latest block's index
+            if (block.Index != latestBlock.Index + 1)
+            {
+                return (false, $"Invalid block index. Expected index: {latestBlock.Index + 1}, Received index: {block.Index}");
+            }
+            //2. Check if the new block's previous hash matches the latest block's hash
+            if (block.PrevHash != latestBlock.Hash)
+            {
+                return (false, "Invalid previous hash.");
+            }
+            //3. Validate the block's hash
+            if (block.Hash != HashingService.ComputeHash(block))
+            {
+                return (false, "Invalid block hash.");
+            }
+            //4. Difficulty check
+            //TODO: Difficulty check should be improved
+            if (!block.Hash.StartsWith(new string('0', block.Difficulty)))
+            {
+                return (false, $"Invalid difficulty. Expected: {new string('0', block.Difficulty)}, Received: {block.Hash[..block.Difficulty]}");
+            }
+            //5. Already existing block check
+            if (Chain.Any(b => b.Hash == block.Hash))
+            {
+                return (false, $"Block with hash \"{block.Hash}\" already exists in the chain.");
+            }
+            //6. Validate transactions in the block
+            foreach (var transaction in block.Transactions)
+            {
+                var (isValid, errorMessage) = _transactionService.ValidateTransaction(transaction);
+                if (!isValid)
+                {
+                    return (false, $"Invalid transaction in block: {errorMessage}");
+                }
+            }
+            //7. Validate the reward transaction
+            if (block.Transactions.FindAll(t => t.From == "Coinbase").Count != 1)
+            {
+                return (false, "Block must contain exactly one reward transaction.");
+            }
+
+            Chain.Add(block);
+            return (true, string.Empty);
         }
     }
 }

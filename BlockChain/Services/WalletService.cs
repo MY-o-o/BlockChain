@@ -3,9 +3,10 @@ using System.Security.Cryptography;
 
 namespace BlockChain.Services
 {
+    //TODO: Implement buffered wallets
     public class WalletService
     {
-        public Wallet CreateWallet(string alias)
+        public static Wallet CreateWallet(string alias)
         {
             using (var ecdsa = ECDsa.Create())
             {
@@ -16,7 +17,7 @@ namespace BlockChain.Services
             }
         }
 
-        public bool VerifySignature(byte[] data, byte[] signature, byte[] publicKey)
+        public static bool VerifySignature(byte[] data, byte[] signature, byte[] publicKey)
         {
             using (var ecdsa = ECDsa.Create())
             {

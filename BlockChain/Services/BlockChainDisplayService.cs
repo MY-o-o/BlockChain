@@ -73,12 +73,16 @@ public static class BlockChainDisplayService
         var specsTable = new Table()
             .Border(TableBorder.None)
             .HideHeaders()
-            .AddColumn(new TableColumn("Property").Width(16))
-            .AddColumn(new TableColumn("Value"));
-        AddProperty(specsTable, "Listen port", blockChainService.NodeListenPort.ToString());
-        AddProperty(specsTable, "Send port", blockChainService.NodeSendPort.ToString());
-        AddProperty(specsTable, "Amount of blocks", blockChainService.Chain.Count.ToString());
-        AddProperty(specsTable, "Transactions in mempool", blockChainService.PendingTransactions.Count.ToString());
+            .AddColumn(new TableColumn("Property").Width(25))
+            .AddColumn(new TableColumn("Value").Width(16));
+        AddProperty(specsTable, "Listen Port", blockChainService.NodeListenPort.ToString());
+        AddProperty(specsTable, "Send Port", blockChainService.NodeSendPort.ToString());
+        var chain = blockChainService.GetChainSnapshot();
+        var pendingTransactions = blockChainService.GetPendingTransactionsSnapshot();
+        AddProperty(specsTable, "Blocks in Chain", chain.Count.ToString());
+        AddProperty(specsTable, "Transactions in Mempool", pendingTransactions.Count.ToString());
+        AddProperty(specsTable, "Difficulty", blockChainService.Difficulty.ToString());
+        AddProperty(specsTable, "Last Hash", chain.Last().Hash);
         AnsiConsole.Write(
             new Panel(specsTable)
                 .Header("[bold]Blockchain Specifications[/]")

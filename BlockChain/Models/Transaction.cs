@@ -21,7 +21,7 @@ namespace BlockChain.Models
 
         public byte[] GetDataToSign()
         {
-            return Encoding.UTF8.GetBytes(ToRowString());
+            return Encoding.UTF8.GetBytes(ToRowString(false));
         }
 
         public object Clone()

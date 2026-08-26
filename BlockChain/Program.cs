@@ -3,52 +3,47 @@ using BlockChain.Services;
 using Spectre.Console;
 using System.Text;
 
-//TODO: Implement DI
+using UI = BlockChain.Services.UIUXService;
 
 Console.OutputEncoding = Encoding.UTF8;
 
+// Usage: dotnet run -- <listenPort> <peerPort>
+// Example pair: node A: 533 534, node B: 534 533.
+int nodeListenPort = args.Length > 0 && int.TryParse(args[0], out var parsedListenPort) ? parsedListenPort : 533;
+int nodePeerPort = args.Length > 1 && int.TryParse(args[1], out var parsedPeerPort) ? parsedPeerPort : 534;
+
+//TODO: Implement DI
 var walletService = new WalletService();
 var miningService = new MiningService();
-var transactionService = new TransactionService(walletService);
 var tamperingService = new BlockchainTamperingService(miningService);
-var blockChainService = new BlockChainService(miningService, transactionService);
-
+var blockChainService = new BlockChainService(miningService, chainFilePath: $"blockchain-{nodeListenPort}.json")
+{
+    NodeListenPort = nodeListenPort,
+    NodeSendPort = nodePeerPort,
+};
+await blockChainService.StartBackgroundSyncAsync([new NetworkEndpoint("127.0.0.1", blockChainService.NodeSendPort)]);
 
 // tmp code
-
-var aliceWallet = walletService.CreateWallet("Alice");
-var bobWallet = walletService.CreateWallet("Bob");
-
+var myWallet = WalletService.CreateWallet("You");
+var bobWallet = WalletService.CreateWallet("Bob");
 // end of tmp code
-
-try
-{
-    blockChainService.LoadChain();
-}
-catch (Exception ex)
-{
-    ErrorPrint(ex.Message, "Error loading blockchain");
-    WarningPrint("Starting with a new blockchain.");
-    await AwaitingInput();
-}
 
 while (true)
 {
     var menuOptions = new (short, string)[]
     {
-        ( 1, "Add a new block (Alice)" ),
+        ( 1, "Add a new block" ),
         ( 2, "Display the blockchain" ),
         ( 3, "Validate the blockchain" ),
-        ( 4, "Change difficulty ++" ),
-        ( 5, "Change difficulty --" ),
+        //( 4, "Tamper with a block" ),
         ( 6, "Display balance" ),
-        ( 7, "Transfer coins from Alice to Bob" ),
+        ( 7, "Transfer coins to Bob" ),
         ( 8, "Display pending transactions" ),
         ( 9, "Test mining efficiency" ),
-        ( 10, "Tamper with a block" ),
+        ( 10, "Synchronize blockchain with peer" ),
         ( 11, "Display total blockchain supply" ),
-        ( 12, "Wait for incoming block from network" ),
-        ( 13, "Send last block to network" ),
+        ( 12, "Send pending transaction to peer" ),
+        ( 13, "Send last block to peer" ),
         ( 14, "Display node specs" ),
         ( 15, "Change node ports"),
         ( 16, "Exit" )
@@ -73,12 +68,12 @@ while (true)
         case 1:
             try
             {
-                var result = await blockChainService.MinePendingTransactionsAsync(aliceWallet.Address);
+                var result = await blockChainService.MinePendingTransactionsAsync(myWallet.Address);
                 MiningService.DisplayMiningResult(result);
             }
             catch (Exception ex)
             {
-                ErrorPrint(ex.Message);
+                UI.ErrorPrint(ex.Message);
             }
             break;
         case 2:
@@ -87,26 +82,54 @@ while (true)
         case 3:
             BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValidChain(blockChainService.Chain));
             break;
-        case 4:
-            //TODO: Implement a more sophisticated difficulty adjustment mechanism based on mining time and other factors
-            blockChainService.Difficulty++;
-            InfoPrint($"Difficulty increased to {blockChainService.Difficulty}");
-            break;
-        case 5:
-            if (blockChainService.Difficulty > 1)
-            {
-                blockChainService.Difficulty--;
-                InfoPrint($"Difficulty decreased to {blockChainService.Difficulty}");
-            }
-            else ErrorPrint("Difficulty cannot be less than 1.");
-            break;
+        //case 4:
+            //TODO: Implement a better UI/UX input and upgrade the tampering service
+            //Console.Write($"Enter block index to tamper with (0-{blockChainService.Chain.Count - 1}): ");
+            //if (!int.TryParse(Console.ReadLine(), out int blockIndex))
+            //{
+            //    UI.ErrorPrint("Invalid block index.");
+            //    break;
+            //}
+
+            //Console.Write("Forged sender: ");
+            //string forgedSender = Console.ReadLine() ?? string.Empty;
+            //Console.Write("Forged recipient: ");
+            //string forgedRecipient = Console.ReadLine() ?? string.Empty;
+            //Console.Write("Forged amount: ");
+
+            //if (!decimal.TryParse(Console.ReadLine(), out decimal forgedAmount))
+            //{
+            //    UI.ErrorPrint("Invalid amount.");
+            //    break;
+            //}
+
+            //try
+            //{
+            //    var forgedTransaction = new Transaction(
+            //        forgedSender,
+            //        forgedRecipient,
+            //        forgedAmount,
+            //        0);
+
+            //    await tamperingService.HackChain(
+            //        blockChainService,
+            //        blockIndex,
+            //        forgedTransaction);
+
+            //    BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValidChain(blockChainService.Chain));
+            //}
+            //catch (ArgumentException exception)
+            //{
+            //    UI.ErrorPrint(exception.Message);
+            //}
+            //break;
         case 6:
-            CustomPrint(blockChainService.GetWalletBalance(aliceWallet.Address) + " coins", "Your balance", Color.Gold1);
+            UI.CustomPrint(blockChainService.GetWalletBalance(myWallet.Address) + " coins", "Your balance", Color.Gold1);
             break;
         case 7:
             try
             {
-                var amountPrompt = new TextPrompt<decimal>("[orange1 bold]Enter amount to transfer from Alice to Bob:[/]")
+                var amountPrompt = new TextPrompt<decimal>("[orange1 bold]Enter amount to transfer to Bob:[/]")
                     .Validate(input => input > 0, "[red][bold]Error:[/] Amount must be a positive number.[/]")
                     .ClearOnFinish();
                 var amountToTransfer = AnsiConsole.Prompt(amountPrompt);
@@ -120,23 +143,24 @@ while (true)
 
                 //TODO:Add Confirmation
 
-                var newTransaction = transactionService.CreateTransaction(aliceWallet.Address, bobWallet.Address, amountToTransfer, transactionFee, aliceWallet);
-                blockChainService.AddTransaction(newTransaction);
-                SuccessPrint("Transaction added.");
+                var newTransaction = TransactionService.CreateTransaction(myWallet.Address, bobWallet.Address, amountToTransfer, transactionFee, myWallet);
+                await blockChainService.AddTransactionAsync(newTransaction);
+                UI.SuccessPrint("Transaction added.");
             } 
             catch (InvalidOperationException ex)
             {
-                ErrorPrint(ex.Message);
+                UI.ErrorPrint(ex.Message);
             }
             break;
         case 8:
-            if (blockChainService.PendingTransactions.Count == 0)
+            var pendingTransactions = blockChainService.GetPendingTransactionsSnapshot();
+            if (pendingTransactions.Count == 0)
             {
-                InfoPrint("No pending transactions.");
+                UI.InfoPrint("No pending transactions.");
             }
             else
             {
-                BlockChainDisplayService.DisplayTransactions(blockChainService.PendingTransactions);
+                BlockChainDisplayService.DisplayTransactions(pendingTransactions);
             }
             break;
         case 9:
@@ -154,113 +178,82 @@ while (true)
             catch (Exception ex)
             {
                 AnsiConsole.Clear();
-                ErrorPrint(ex.Message);
+                UI.ErrorPrint(ex.Message);
             }
 
             break;
         case 10:
-            //TODO: Implement a better UI/UX input and upgrade the tampering service
-            Console.Write($"Enter block index to tamper with (0-{blockChainService.Chain.Count - 1}): ");
-            if (!int.TryParse(Console.ReadLine(), out int blockIndex))
-            {
-                ErrorPrint("Invalid block index.");
-                break;
-            }
-
-            Console.Write("Forged sender: ");
-            string forgedSender = Console.ReadLine() ?? string.Empty;
-            Console.Write("Forged recipient: ");
-            string forgedRecipient = Console.ReadLine() ?? string.Empty;
-            Console.Write("Forged amount: ");
-
-            if (!decimal.TryParse(Console.ReadLine(), out decimal forgedAmount))
-            {
-                ErrorPrint("Invalid amount.");
-                break;
-            }
-
             try
             {
-                var forgedTransaction = new Transaction(
-                    forgedSender,
-                    forgedRecipient,
-                    forgedAmount,
-                    0);
-
-                await tamperingService.HackChain(
-                    blockChainService,
-                    blockIndex,
-                    forgedTransaction);
-
-                BlockChainDisplayService.DisplayValidationResult(blockChainService.IsValidChain(blockChainService.Chain));
-            }
-            catch (ArgumentException exception)
-            {
-                ErrorPrint(exception.Message);
-            }
-            break;
-        case 11:
-            CustomPrint(blockChainService.GetTotalSupply() + " coins", "Total blockchain supply", Color.Gold1);
-            break;
-        case 12:
-            try
-            {
-                //var cancelKey = ConsoleKey.Escape;
-                var cts = new CancellationTokenSource();
-                var token = cts.Token;
-                var awaitingTask = AwaitingInput(
-                    $"Waiting for incoming block from network on port {blockChainService.NodeListenPort}",
-                    //$"\n[dim gray]Press [bold]{cancelKey}[/] to cancel[/]",
-                    new Style(Color.SteelBlue1_1), isInPanel: true, isCancelable: false, cts: cts);
-
-                //var listenerTask = Task.Run( async () =>
-                //{
-                //    if (Console.IsInputRedirected) return;
-                //    while (cts.IsCancellationRequested)
-                //    {
-                //        if (Console.KeyAvailable && Console.ReadKey(intercept: true).Key == cancelKey)
-                //        {
-                //            cts.Cancel();
-                //            return;
-                //        }
-
-                //        await Task.Delay(100, token);
-                //    }
-                //});
-
-                var receivedBlock = await BlockNetworkService.ReceiveBlockAsync(blockChainService.NodeListenPort, token);
-                var (accepted, errorMessage) = blockChainService.TryAddBlockFromNet(receivedBlock);
-
-                cts.Cancel();
-                //await listenerTask;
-                await awaitingTask;
-
-                AnsiConsole.Clear();
-                if (accepted)
+                var syncResult = await blockChainService.ExchangeChainAsync(new NetworkEndpoint("127.0.0.1", blockChainService.NodeSendPort));
+                if (syncResult.Accepted)
                 {
-                    SuccessPrint("Received block accepted and added to the blockchain.");
+                    UI.SuccessPrint("A longer valid blockchain was accepted.");
                 }
                 else
                 {
-                    ErrorPrint(errorMessage, "Received block rejected");
+                    UI.InfoPrint(syncResult.ErrorMessage);
                 }
             }
             catch (Exception ex)
             {
-                AnsiConsole.Clear();
-                ErrorPrint(ex.Message, "Error receiving block");
+                UI.ErrorPrint(ex.Message, "Synchronization failed");
+            }
+            break;
+        case 11:
+            UI.CustomPrint(blockChainService.GetTotalSupply() + " coins", "Total blockchain supply", Color.Gold1);
+            break;
+        case 12:
+            var transactionsToSend = blockChainService.GetPendingTransactionsSnapshot();
+            if (transactionsToSend.Count == 0)
+            {
+                UI.InfoPrint("There are no pending transactions to send.");
+                break;
+            }
+
+            var transactionToSend = AnsiConsole.Prompt(
+                new SelectionPrompt<Transaction>()
+                    .Title("[bold orange1]Select a transaction to send:[/]")
+                    .UseConverter(transaction => $"{transaction.Id} | {transaction.Amount} (+ {transaction.Fee} fee)")
+                    .AddChoices(transactionsToSend));
+            try
+            {
+                var response = await BlockNetworkService.SendAndReceiveAsync(
+                    new NetworkEndpoint("127.0.0.1", blockChainService.NodeSendPort),
+                    new NetworkMessage { Type = NetworkMessageType.Transaction, Transaction = transactionToSend });
+                if (response?.Type == NetworkMessageType.Rejected)
+                {
+                    UI.ErrorPrint(response.Error ?? "The peer rejected the transaction.", "Transaction rejected");
+                }
+                else
+                {
+                    UI.SuccessPrint($"Transaction {transactionToSend.Id} was sent to the peer.");
+                }
+            }
+            catch (Exception ex)
+            {
+                UI.ErrorPrint(ex.Message, "Error sending transaction");
             }
             break;
         case 13:
             try
             {
-                var lastBlock = blockChainService.Chain.Last();
-                await BlockNetworkService.SendBlockAsync(lastBlock, "127.0.0.1", blockChainService.NodeListenPort); //fix ports
-                SuccessPrint("Last block sent to network.");
+                var lastBlock = blockChainService.GetChainSnapshot().Last();
+                var response = await BlockNetworkService.SendAndReceiveAsync(
+                    new NetworkEndpoint("127.0.0.1", blockChainService.NodeSendPort),
+                    new NetworkMessage { Type = NetworkMessageType.Block, Block = lastBlock });
+                if (response?.Type == NetworkMessageType.Rejected)
+                {
+                    UI.ErrorPrint(response.Error ?? "The peer rejected the block.", "Block rejected");
+                }
+                else
+                {
+                    UI.SuccessPrint("Last block sent to network.");
+                }
             }
             catch (Exception ex)
             {
-                ErrorPrint(ex.Message, "Error sending block");
+                UI.ErrorPrint(ex.Message, "Error sending block");
             }
             break;
         case 14:
@@ -272,114 +265,38 @@ while (true)
                     .ShowDefaultValue()
                     .Validate(input => input > 0, "[red][bold]Error:[/] Port must be a positive number.[/]")
                     .ClearOnFinish();
-            var listenPort = AnsiConsole.Prompt(listenPortPrompt);
+            var listenPortInput = AnsiConsole.Prompt(listenPortPrompt);
 
             var sendPortPrompt = new TextPrompt<int>("[orange1 bold]Enter send port:[/]")
                     .DefaultValue(blockChainService.NodeSendPort)
                     .ShowDefaultValue()
                     .Validate(input => input > 0, "[red][bold]Error:[/] Port must be a positive number.[/]")
                     .ClearOnFinish();
-            var sendPort = AnsiConsole.Prompt(sendPortPrompt);
+            var sendPortInput = AnsiConsole.Prompt(sendPortPrompt);
 
             //TODO:Add Confirmation
 
-            SuccessPrint("Ports were changed");
+            try
+            {
+                await blockChainService.RestartBackgroundSyncAsync(listenPortInput, sendPortInput);
+                UI.SuccessPrint($"Listener restarted on port {listenPortInput}. Peer port: {sendPortInput}.");
+                blockChainService.ChainFilePath = $"blockchain-{nodeListenPort}.json";
+            }
+            catch (Exception ex)
+            {
+                UI.ErrorPrint(ex.Message, "Failed to restart listener");
+            }
             break;
         case 16:
             blockChainService.SaveChain();
+
+            await blockChainService.DisposeAsync();
+
             return;
         default:
-            ErrorPrint("Invalid option. Please try again.");
+            UI.ErrorPrint("Invalid option. Please try again.");
             break;
     }
 
-    await AwaitingInput();
+    await UI.AwaitingInput();
 }
-
-static async Task AwaitingInput(
-    string message = "Press any key to continue", 
-    Style? style = null, 
-    int delayMs = 800, 
-    bool isInPanel = false, 
-    bool isCancelable = true,
-    CancellationTokenSource? cts = null)
-{
-    style ??= new Style(foreground: Color.Gray, decoration: Decoration.Bold);
-    cts ??= new CancellationTokenSource();
-    CancellationToken token = cts.Token;
-    short dotCounter = 1;
-
-    Console.Write(Environment.NewLine);
-
-    var messageMarkup = new Markup(message, style);
-    var panel = new Panel(messageMarkup)
-        .BorderColor(style.Value.Foreground)
-        .Border(BoxBorder.Rounded)
-        .Padding(2, 0);
-
-    Task dotTask = AnsiConsole.Live(isInPanel ? panel : messageMarkup)
-        .StartAsync(async ctx =>
-        {
-            while (true)
-            {
-                try
-                {
-                    token.ThrowIfCancellationRequested();
-                    var newMessageMarkup = new Markup(message + new string('.', dotCounter) + new string(' ', 3 - dotCounter), style);
-                    var newPanel = new Panel(newMessageMarkup)
-                        .BorderColor(style.Value.Foreground)
-                        .Border(BoxBorder.Rounded)
-                        .Padding(2, 0);
-                    ctx.UpdateTarget(isInPanel ? newPanel : newMessageMarkup);
-
-                    dotCounter = (short)((dotCounter + 1) % 4);
-                    await Task.Delay(delayMs, token);
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-            }
-        });
-
-    if (isCancelable)
-    {
-        await Task.Run(() => {
-            Console.ReadKey(intercept: true);
-            cts.Cancel();
-        });
-    }
-
-    try
-    {
-        await dotTask;
-    }
-    catch (Exception ex)
-    {
-        ErrorPrint(ex.Message);
-    }
-
-    AnsiConsole.Clear();
-}  
-
-static void CustomPrint(string message, string caption = "", Color? color = null)
-{
-    color ??= Color.Gray;
-    
-    int horizontalAlignment = 0;
-    if (caption.Length > message.Length)
-    {
-        horizontalAlignment = (caption.Length - message.Length) / 2;
-    }
-
-    var panel = new Panel($"[bold {color.Value}]{message}[/]")
-        .Header($"[{color.Value}]{caption}[/]")
-        .BorderColor(color ?? Color.Gray)
-        .Border(BoxBorder.Rounded)
-        .Padding(2 + horizontalAlignment, 0);
-    AnsiConsole.Write(panel);
-}
-static void ErrorPrint(string message, string caption = "Error") => CustomPrint(message, caption, Color.Red);
-static void SuccessPrint(string message, string caption = "Success") => CustomPrint(message, caption, Color.Green);
-static void WarningPrint(string message, string caption = "Warning") => CustomPrint(message, caption, Color.Yellow);
-static void InfoPrint(string message, string caption = "Info") => CustomPrint(message, caption, Color.SteelBlue1_1);

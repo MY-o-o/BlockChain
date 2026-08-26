@@ -140,6 +140,14 @@ MerkleRoot повинен зберігатися у Block та брати уча
 
 ![MerkleTree.png](results/MerkleTree.png)
 
+### Відхилення блока якщо відставання більше одного блоку
+
+![BlockDeclined1.png](results/BlockDeclined1.png)
+
+![BlockDeclined2.png](results/BlockDeclined2.png)
+
+![BlockDeclined3.png](results/BlockDeclined3.png)
+
 ## Whiteboard
 
 ![WhiteBoard-25-08-2026.excalidraw.svg](WhiteBoard-25-08-2026.excalidraw.svg)

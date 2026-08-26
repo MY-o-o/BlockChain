@@ -1,5 +1,6 @@
 using BlockChain.Models;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 
 namespace BlockChain.Services;
 
@@ -24,7 +25,7 @@ public static class BlockChainDisplayService
             var content = new Rows(
                 CreateBlockTable(block),
                 new Rule("[grey]Transactions[/]").RuleStyle("grey"),
-                CreateTransactionsTable(block.Transactions));
+                CreateTransactionsTable(block.Transactions, "Transactions"));
 
             AnsiConsole.Write(
                 new Panel(content)
@@ -38,20 +39,6 @@ public static class BlockChainDisplayService
                 AnsiConsole.WriteLine();
             }
         }
-    }
-
-    public static void DisplayTransactions(IEnumerable<Transaction> transactions)
-    {
-        ArgumentNullException.ThrowIfNull(transactions);
-
-        var transactionList = transactions.ToList();
-        if (transactionList.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[grey]No transactions to display.[/]");
-            return;
-        }
-
-        AnsiConsole.Write(CreateTransactionsTable(transactionList));
     }
 
     public static void DisplayValidationResult(bool isValid)
@@ -91,6 +78,54 @@ public static class BlockChainDisplayService
                 .Padding(1, 0));
     }
 
+    public static void PrintAccountStatement(BlockChainService blockchain, string address)
+    {
+        ArgumentNullException.ThrowIfNull(blockchain);
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+
+        var walletInfo = blockchain.GetWalletInfo(address);
+        var summary = new Table()
+            .Border(TableBorder.None)
+            .HideHeaders()
+            .AddColumn(new TableColumn("Property").Width(18))
+            .AddColumn(new TableColumn("Value").RightAligned());
+
+        AddProperty(summary, "Address", address);
+        AddProperty(summary, "Total income", walletInfo.TotalIncome.ToString());
+        AddProperty(summary, "Total outcome", walletInfo.TotalOutcome.ToString());
+        AddProperty(summary, "Current balance", walletInfo.CurrentBalance.ToString());
+
+        var content = new List<IRenderable>
+        {
+            summary,
+            new Rule("[grey]Confirmed transactions[/]").RuleStyle("grey"),
+            CreateTransactionsTable(walletInfo.TransactionHistory, "Confirmed transactions"),
+            new Rule("[grey]Pending outgoing transactions[/]").RuleStyle("grey"),
+            CreateTransactionsTable(walletInfo.PendingTransactions, "Pending transactions")
+        };
+
+        AnsiConsole.Write(
+            new Panel(new Rows(content))
+                .Header("[bold deepskyblue1]Account Statement[/]")
+                .Border(BoxBorder.Rounded)
+                .BorderColor(Color.SteelBlue1)
+                .Padding(1, 0));
+    }
+
+    public static void DisplayTransactions(IEnumerable<Transaction> transactions, string title = "Transactions")
+    {
+        ArgumentNullException.ThrowIfNull(transactions);
+
+        var transactionList = transactions.ToList();
+        if (transactionList.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[grey]No transactions to display.[/]");
+            return;
+        }
+
+        AnsiConsole.Write(CreateTransactionsTable(transactionList, title));
+    }
+
     private static Table CreateBlockTable(Block block)
     {
         var table = new Table()
@@ -109,13 +144,13 @@ public static class BlockChainDisplayService
         return table;
     }
 
-    private static Table CreateTransactionsTable(IEnumerable<Transaction> transactions)
+    private static Table CreateTransactionsTable(IEnumerable<Transaction> transactions, string title)
     {
         var table = new Table()
             .Border(TableBorder.Rounded)
             .BorderColor(Color.Grey)
             .ShowRowSeparators()
-            .Title("[bold]Transactions[/]")
+            .Title($"[bold]{title}[/]")
             .AddColumn(new TableColumn("ID").NoWrap())
             .AddColumn(new TableColumn("From"))
             .AddColumn(new TableColumn("To"))

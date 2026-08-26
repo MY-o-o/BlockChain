@@ -36,8 +36,8 @@ while (true)
         ( 2, "Display the blockchain" ),
         ( 3, "Validate the blockchain" ),
         //( 4, "Tamper with a block" ),
-        ( 6, "Display balance" ),
-        ( 7, "Transfer coins to Bob" ),
+        ( 6, "Print account info" ),
+        ( 7, "Transfer coins" ),
         ( 8, "Display pending transactions" ),
         ( 9, "Test mining efficiency" ),
         ( 10, "Synchronize blockchain with peer" ),
@@ -124,12 +124,32 @@ while (true)
             //}
             //break;
         case 6:
-            UI.CustomPrint(blockChainService.GetWalletBalance(myWallet.Address) + " coins", "Your balance", Color.Gold1);
+            BlockChainDisplayService.PrintAccountStatement(blockChainService, myWallet.Address);
             break;
         case 7:
             try
             {
-                var amountPrompt = new TextPrompt<decimal>("[orange1 bold]Enter amount to transfer to Bob:[/]")
+                //TODO: Implement more sophisticated receiver selection
+                var receivers = new (string, string)[]
+                {
+                    (bobWallet.Alias, bobWallet.Address),
+                    (myWallet.Alias, myWallet.Address),
+                    ("BURN", "BURN")
+                };
+
+                var receiverPrompt = new SelectionPrompt<(string alias, string address)>()
+                .Title("[bold orange1]Choose the receiver:[/]")
+                .MoreChoicesText("[grey dim](Move up and down to reveal more options)[/]")
+                .EnableSearch()
+                .SearchPlaceholderText("[grey dim](Type to search...)[/]")
+                .UseConverter(r => $"{r.alias} ({(r.address.Length >= 20 ? "..." + r.address[^20..] : r.address)})")
+                .AddChoices(receivers);
+                receiverPrompt.HighlightStyle = new Style(foreground: Color.Orange3, decoration: Decoration.Bold);
+                receiverPrompt.SearchHighlightStyle = new Style(foreground: Color.Orange1, decoration: Decoration.Underline);
+
+                var receicer = AnsiConsole.Prompt(receiverPrompt);
+
+                var amountPrompt = new TextPrompt<decimal>("[orange1 bold]Enter amount to transfer:[/]")
                     .Validate(input => input > 0, "[red][bold]Error:[/] Amount must be a positive number.[/]")
                     .ClearOnFinish();
                 var amountToTransfer = AnsiConsole.Prompt(amountPrompt);
@@ -141,9 +161,9 @@ while (true)
                     .ClearOnFinish();
                 var transactionFee = AnsiConsole.Prompt(feePrompt);
 
-                //TODO:Add Confirmation
+                //TODO:Add Confirmation (WITH BALANCE)
 
-                var newTransaction = TransactionService.CreateTransaction(myWallet.Address, bobWallet.Address, amountToTransfer, transactionFee, myWallet);
+                var newTransaction = TransactionService.CreateTransaction(myWallet.Address, receicer.Item2, amountToTransfer, transactionFee, myWallet);
                 await blockChainService.AddTransactionAsync(newTransaction);
                 UI.SuccessPrint("Transaction added.");
             } 
@@ -211,11 +231,18 @@ while (true)
                 break;
             }
 
-            var transactionToSend = AnsiConsole.Prompt(
-                new SelectionPrompt<Transaction>()
-                    .Title("[bold orange1]Select a transaction to send:[/]")
-                    .UseConverter(transaction => $"{transaction.Id} | {transaction.Amount} (+ {transaction.Fee} fee)")
-                    .AddChoices(transactionsToSend));
+            var transactionPrompt = new SelectionPrompt<Transaction>()
+                .Title("[bold orange1]Select a transaction to send:[/]")
+                .MoreChoicesText("[grey dim](Move up and down to reveal more options)[/]")
+                .EnableSearch()
+                .SearchPlaceholderText("[grey dim](Type to search...)[/]")
+                .UseConverter(transaction => $"{transaction.Id} | {transaction.Amount} (+ {transaction.Fee} fee)")
+                .AddChoices(transactionsToSend);
+            transactionPrompt.HighlightStyle = new Style(foreground: Color.Orange3, decoration: Decoration.Bold);
+            transactionPrompt.SearchHighlightStyle = new Style(foreground: Color.Orange1, decoration: Decoration.Underline);
+
+            var transactionToSend = AnsiConsole.Prompt(transactionPrompt);
+
             try
             {
                 var response = await BlockNetworkService.SendAndReceiveAsync(

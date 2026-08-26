@@ -7,6 +7,13 @@ namespace BlockChain.Services;
 
 public readonly record struct ChainAdoptionResult(bool Accepted, string ErrorMessage);
 
+public readonly record struct WalletInfo(
+    decimal TotalIncome, 
+    decimal TotalOutcome, 
+    decimal CurrentBalance, 
+    List<Transaction> TransactionHistory,
+    List<Transaction> PendingTransactions);
+
 public sealed class BlockChainService : IAsyncDisposable
 {
     private readonly MiningService _miningService;
@@ -254,7 +261,8 @@ public sealed class BlockChainService : IAsyncDisposable
         try
         {
             var selected = PendingTransactions.OrderByDescending(t => t.Fee).Take(MaxTransactionAmountPerBlock).Select(CloneTransaction).ToList();
-            var reward = new Transaction("Coinbase", minerAddress, GetCurrentRewardUnsafe() + selected.Sum(t => t.Fee), 0);
+            var fees = selected.Sum(t => t.Fee);
+            var reward = new Transaction("Coinbase", minerAddress, GetCurrentRewardUnsafe() + fees, fees);
             selected.Insert(0, reward);
             var tip = Chain.Last();
             newBlock = new Block(tip.Index + 1, selected, tip.Hash, Difficulty);
@@ -336,10 +344,10 @@ public sealed class BlockChainService : IAsyncDisposable
         var (isValid, errorMessage) = validation;
         if (!isValid) throw new InvalidOperationException($"Invalid transaction: {errorMessage}");
 
-        var senderBalance = GetWalletBalanceUnsafe(transaction.From);
-        if (senderBalance < transaction.Amount + transaction.Fee)
+        WalletInfo walletInfo = GetWalletInfoUnsafe(transaction.From);
+        if (walletInfo.CurrentBalance < transaction.Amount + transaction.Fee)
         {
-            throw new InvalidOperationException($"Insufficient balance for transaction from {transaction.From}. Available: {senderBalance}; required: {transaction.Amount + transaction.Fee}.");
+            throw new InvalidOperationException($"Insufficient balance for transaction from {transaction.From}. Available: {walletInfo.CurrentBalance}; required: {transaction.Amount + transaction.Fee}.");
         }
     }
 
@@ -472,29 +480,52 @@ public sealed class BlockChainService : IAsyncDisposable
         return true;
     }
 
-    public decimal GetWalletBalance(string walletAddress)
+    public WalletInfo GetWalletInfo(string walletAddress)
     {
         _stateGate.Wait();
-        try { return GetWalletBalanceUnsafe(walletAddress); }
+        try { return GetWalletInfoUnsafe(walletAddress); }
         finally { _stateGate.Release(); }
     }
 
-    private decimal GetWalletBalanceUnsafe(string walletAddress)
+    private WalletInfo GetWalletInfoUnsafe(string walletAddress)
     {
-        decimal balance = 0;
+        decimal income = 0;
+        decimal outcome = 0;
+        List<Transaction> transactions = [];
         foreach (var transaction in Chain.SelectMany(block => block.Transactions))
         {
-            if (transaction.From == walletAddress) balance -= transaction.Amount + transaction.Fee;
-            if (transaction.To == walletAddress) balance += transaction.Amount;
+            if (transaction.From == walletAddress)
+            {
+                outcome += transaction.Amount + transaction.Fee;
+                transactions.Add(transaction);
+            }
+            if (transaction.To == walletAddress)
+            {
+                income += transaction.Amount;
+                transactions.Add(transaction);
+            }
         }
-        balance -= PendingTransactions.Where(t => t.From == walletAddress).Sum(t => t.Amount + t.Fee);
-        return balance;
+        List<Transaction> pendingTransactions = PendingTransactions.Where(t => t.From == walletAddress).ToList();
+        outcome += pendingTransactions.Sum(t => t.Amount + t.Fee);
+
+        return new WalletInfo(income, outcome, income - outcome, transactions, pendingTransactions);
     }
 
     public decimal GetTotalSupply()
     {
         _stateGate.Wait();
-        try { return Chain.SelectMany(b => b.Transactions).Where(t => t.From == "Coinbase").Sum(t => t.Amount); }
+        try
+        {
+            //TODO: Go the hard way and just count the blocks and calculate expected mining reward - BURN transaction (not sure if needed)
+            var transactions = Chain.SelectMany(b => b.Transactions);
+            decimal issuedCoins = transactions.Where(t => t.From == "Coinbase").Sum(t => t.Amount);
+            decimal collectedFees = transactions.Where(t => t.From != "Coinbase").Sum(t => t.Fee);
+            decimal burnedCoins = transactions.Where(t => t.To == "BURN").Sum(t => t.Amount);
+
+            // Fees are included in the coinbase transaction paid to the miner, but
+            // they are transferred from senders rather than newly issued coins.
+            return issuedCoins - collectedFees - burnedCoins;
+        }
         finally { _stateGate.Release(); }
     }
 

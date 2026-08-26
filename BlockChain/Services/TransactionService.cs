@@ -38,6 +38,10 @@ namespace BlockChain.Services
             {
                 return (false, "Invalid transaction signature.");
             }
+            if (transaction.From == "BURN")
+            {
+                return (false, "Can't withdraw from BURN");
+            }
 
             return (true, string.Empty);
         }
